@@ -2,6 +2,10 @@
 
 This folder contains unorganized material for my personal software factory.
 
+## Personal workflow
+
+- [Personal SDLC factory workflow: first draft](personal-sdlc-factory-workflow.md)
+
 ## Issue and task tracking
 
 I use GitHub Issues and [Beadwork](https://github.com/jallum/beadwork) for issue and task tracking. Beadwork gives coding agents durable work state in Git.
