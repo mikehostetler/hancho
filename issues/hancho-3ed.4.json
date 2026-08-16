@@ -1,6 +1,8 @@
 {
   "assignee": "",
-  "blocked_by": [],
+  "blocked_by": [
+    "hancho-3ed.3"
+  ],
   "blocks": [],
   "created": "2026-08-16T23:49:05Z",
   "description": "Test process-group cleanup, escript bootstrap, harness startup, CLI errors, and configuration success and failure paths.",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "Harden core integration tests",
   "type": "task",
-  "updated_at": "2026-08-16T23:49:05Z"
+  "updated_at": "2026-08-16T23:49:06Z"
 }

@@ -3,7 +3,9 @@
   "blocked_by": [
     "hancho-3ed.2"
   ],
-  "blocks": [],
+  "blocks": [
+    "hancho-3ed.4"
+  ],
   "created": "2026-08-16T23:49:05Z",
   "description": "Define a small Zoi-backed config struct, read .hancho/config.toml, provide defaults when absent, support dot-delimited value lookup, and integrate it with project and init.",
   "id": "hancho-3ed.3",
@@ -13,5 +15,5 @@
   "status": "open",
   "title": "Add versioned Hancho configuration",
   "type": "task",
-  "updated_at": "2026-08-16T23:49:05Z"
+  "updated_at": "2026-08-16T23:49:06Z"
 }
