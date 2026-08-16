@@ -1,6 +1,12 @@
-# Elixir Factory Driver Concept
+# Hancho: Elixir Factory Driver
 
-Status: Early concept. The product name is open.
+Status: Early concept. The product name is confirmed.
+
+## Naming decision
+
+The product name and the command name are `hancho`. The Elixir module namespace is `Hancho`.
+
+The name comes from the Toyota team-leader role. It represents first-line support for operators, standard work, problem response, flow protection, and local Kaizen.
 
 ## Intent
 
@@ -14,7 +20,7 @@ The driver coordinates people, coding harnesses, services, and Git work. It supp
 
 Each workflow can use a different state machine, authority profile, set of stations, and evidence contract.
 
-## TPS role and naming note
+## TPS role
 
 The working metaphor is a foreman.
 
@@ -24,8 +30,6 @@ Toyota uses two related shop-floor roles:
 - A **group leader** is the first level of management. This person supports several team leaders and has wider supervisory authority.
 
 The factory driver is closer to a **team leader** because it supports operators and controls normal flow. It must not replace the human owner, take disciplinary authority, or change factory purpose and policy by itself.
-
-The product name remains open. `Hancho` is a possible role-based name, but it is not yet the selected name.
 
 References:
 
