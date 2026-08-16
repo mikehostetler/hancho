@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-16T23:49:05Z",
+  "description": "Add explicit help, version, command errors, stable exit codes, and one version source.",
+  "id": "hancho-3ed.2",
+  "labels": [],
+  "parent": "hancho-3ed",
+  "priority": 1,
+  "status": "open",
+  "title": "Make CLI and version behavior explicit",
+  "type": "task",
+  "updated_at": "2026-08-16T23:49:05Z"
+}
