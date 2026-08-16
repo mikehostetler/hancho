@@ -1,6 +1,8 @@
 {
   "assignee": "",
-  "blocked_by": [],
+  "blocked_by": [
+    "hancho-3ed.1"
+  ],
   "blocks": [],
   "created": "2026-08-16T23:49:05Z",
   "description": "Add explicit help, version, command errors, stable exit codes, and one version source.",
