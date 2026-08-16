@@ -15,7 +15,8 @@ I use GitHub Issues and [Beadwork](https://github.com/jallum/beadwork) for issue
 ## Engineering workflow
 
 - [Hancho: Elixir factory driver concept](elixir-factory-driver.md)
-- [Hancho repository-local runtime state and logs](hancho-local-runtime-state.md)
+- [Hancho repository-local folder, configuration, state, and logs](hancho-local-runtime-state.md)
+- [Hancho CLI harness adapters and routing](hancho-cli-harnesses.md)
 
 I use the core [Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin) skills as a loop:
 

@@ -12,13 +12,15 @@ The name comes from the Toyota team-leader role. It represents first-line suppor
 
 Replace `ralph_wiggum_loop_v2.sh` with a local factory driver written in Elixir.
 
-The driver coordinates people, coding harnesses, services, and Git work. It supports several versioned workflows instead of one fixed loop. Initial workflows include:
+The driver coordinates CLI coding harnesses that perform work in Git repositories. It supports several versioned workflows instead of one fixed loop. Initial workflows include:
 
 - Build.
 - Plan.
 - Audit.
 
 Each workflow can use a different state machine, authority profile, set of stations, and evidence contract.
+
+Hancho coordinates CLI harness processes only. People provide purpose, policy, approvals, and exception decisions. Hancho does not model people or remote services as harness operators.
 
 ## TPS role
 
@@ -60,7 +62,7 @@ Use these terms:
 | Factory Unit | One target Git repository. |
 | Workflow | A versioned state machine such as build, plan, or audit. |
 | Station | One reusable capability or action in a workflow. |
-| Operator | A person, coding harness, service, or child unit that operates a station. |
+| Operator | A configured CLI harness that operates a station. |
 | Work order | One workflow run. |
 | Journal | Durable events, decisions, effects, and evidence for a work order. |
 | Andon | A visible stop, abnormal condition, or decision request. |
@@ -72,9 +74,9 @@ Separate the system into these parts:
 - A pure transition engine.
 - Versioned workflow definitions.
 - A durable run journal.
-- A repository-local runtime folder for durable state, logs, and evidence. See [Hancho local runtime state and logs](hancho-local-runtime-state.md).
+- A repository-local `.hancho/` folder for machine configuration, durable state, logs, and evidence. See [Hancho local runtime state and logs](hancho-local-runtime-state.md).
 - Reusable stations.
-- Harness adapters for Grok, Zclaude, Codex, and later tools.
+- Flexible CLI harness adapters for Grok, Zclaude, Codex, Pi, and later tools. See [Hancho CLI harness adapters and routing](hancho-cli-harnesses.md).
 - A Beadwork execution adapter.
 - Git worktree, verification, review, and acceptance adapters.
 - A command-line interface for run, status, resume, stop, and reconcile operations.
@@ -94,7 +96,7 @@ Audit:
 released → inventory → inspecting → validating → reporting → complete
 ```
 
-Workflows request capabilities such as read-only analysis, worktree editing, or review. They do not name a specific coding harness. A harness router selects an operator that has the required capability.
+Workflows request capabilities such as read-only analysis, worktree editing, or review. They do not name a specific coding harness. Repository-local configuration assigns a compatible CLI harness to each workflow station.
 
 Each work order pins its workflow name and version. A new workflow version does not silently change an active work order.
 

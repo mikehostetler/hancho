@@ -1,43 +1,47 @@
-# Hancho Repository-Local Runtime State and Logs
+# Hancho Repository-Local Folder, State, and Logs
 
 Status: Early design idea
 
 ## Intent
 
-Hancho needs one folder inside each local Git repository for durable operational state, logs, evidence, and recovery data.
+Hancho needs one ignored `.hancho/` folder at the target repository root. This folder holds local machine configuration, custom harness adapters, durable operational state, logs, evidence, and recovery data.
 
 This state belongs to the repository. It is not global user state. Hancho must not depend on an agent prompt, process memory, or temporary directory to recover a work order.
 
-## Initial location
+## Location and Git rule
 
-Store runtime data under the repository's Git common directory:
-
-```text
-<git-common-dir>/hancho/
-```
-
-For a normal checkout, this path appears as:
+Use this path:
 
 ```text
-.git/hancho/
+<repository-root>/.hancho/
 ```
 
-Hancho must resolve the path with `git rev-parse --git-common-dir`. It must not assume that `.git` is a directory. A linked worktree can use a `.git` file that points to the common Git directory.
+Add this rule to the repository `.gitignore`:
+
+```gitignore
+# Hancho local configuration and runtime data
+.hancho/
+```
+
+The whole folder is local and untracked. It can contain machine paths and harness choices that do not apply to another developer or machine.
 
 This location has three useful properties:
 
-- Runtime data cannot enter a commit.
-- All worktrees for one repository share the same runtime state.
-- A different repository or clone has separate Hancho state.
+- Configuration and runtime data stay together.
+- Git status stays clean while Hancho operates.
+- Each checkout can use different installed CLI harnesses and local paths.
 
-An optional tracked `.hancho/` directory at the worktree root can hold workflow definitions, repository policy, and configuration. It must not hold runtime state or logs.
+Hancho-created execution worktrees do not create a second control folder. They use the configuration and runtime state from the checkout that started the work order.
 
 ## Proposed layout
 
 ```text
-<git-common-dir>/hancho/
+<repository-root>/.hancho/
+├── config.toml
 ├── hancho.sqlite3
 ├── repository.json
+├── harnesses/
+│   └── pi
 ├── runs/
 │   └── <run-id>/
 │       ├── run.json
@@ -51,7 +55,9 @@ An optional tracked `.hancho/` directory at the worktree root can hold workflow 
 └── tmp/
 ```
 
-The database stores indexed operational facts. Files store large or stream-oriented artifacts. The database records each file path, content hash, size, creation time, and retention class.
+The configuration selects workflows, CLI harnesses, adapter executables, capabilities, and station routing. The database stores indexed operational facts. Files store large or stream-oriented artifacts. The database records each artifact path, content hash, size, creation time, and retention class.
+
+See [Hancho CLI harness adapters and routing](hancho-cli-harnesses.md) for the configuration concept.
 
 ## Initial database choice
 
@@ -88,16 +94,17 @@ Do not store large command output, harness streams, or generated reports as data
 
 ## Repository identity
 
-The Git common directory defines the local runtime boundary. One Hancho database serves one local repository and all of its worktrees.
+The control checkout root defines the local runtime boundary. One Hancho database serves the Hancho runs that start from that checkout.
 
 The repository record can include:
 
 - A generated Hancho repository ID.
 - The normalized Git remote when one exists.
+- The control checkout path.
 - The Git common-directory path.
-- The current worktree paths as changeable bindings.
+- Execution worktree paths as changeable bindings.
 
-Moving a worktree must not create a new repository record. Creating a separate clone creates separate local Hancho state.
+Creating a separate clone creates separate local Hancho configuration and state.
 
 ## Durability and recovery rules
 
@@ -124,6 +131,9 @@ These rules support `hancho status`, `hancho resume`, and `hancho reconcile` aft
 ## Open questions
 
 - Should `events.jsonl` duplicate database events for direct inspection, or should SQLite be the only event store?
+- Should `hancho init` update the tracked `.gitignore` or the local `.git/info/exclude` file?
+- How should a user share a useful local harness configuration without committing machine-specific details?
+- How should Hancho behave when it starts from a linked Git worktree?
 - Which artifacts can contain source code or sensitive application data?
 - What are the default retention periods for completed, failed, and stopped runs?
 - When should DuckDB or another reporting store read a snapshot of the operational data?
