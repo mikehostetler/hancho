@@ -4,14 +4,15 @@
   "blocks": [
     "hancho-3ed.2"
   ],
+  "closed_at": "2026-08-16T23:55:47Z",
   "created": "2026-08-16T23:49:05Z",
   "description": "Add reusable erlexec command execution, make the Git runner an adapter, route Git and Beadwork checks through package boundaries, and add a repository-local project context.",
   "id": "hancho-3ed.1",
   "labels": [],
   "parent": "hancho-3ed",
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Create command and project boundaries",
   "type": "task",
-  "updated_at": "2026-08-16T23:49:19Z"
+  "updated_at": "2026-08-16T23:55:47Z"
 }
