@@ -10,6 +10,8 @@ This folder contains unorganized material for my personal software factory.
 
 I use GitHub Issues and [Beadwork](https://github.com/jallum/beadwork) for issue and task tracking. Beadwork gives coding agents durable work state in Git.
 
+- [GitHub Issues and Beadwork boundary](github-issues-and-beadwork.md)
+
 ## Engineering workflow
 
 I use the core [Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin) skills as a loop:
