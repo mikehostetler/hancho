@@ -1,10 +1,7 @@
 defmodule Hancho do
-  @moduledoc """
-  Coordinates durable software-factory workflows in one Git repository.
-  """
+  @moduledoc false
 
-  @version Mix.Project.config()[:version]
+  @version "0.1.0"
 
-  @spec version() :: String.t()
   def version, do: @version
 end
