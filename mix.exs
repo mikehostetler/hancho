@@ -18,6 +18,7 @@ defmodule Hancho.MixProject do
   defp deps do
     [
       {:erlexec, "~> 2.3.4", runtime: false},
+      {:git, "~> 0.7.0"},
       {:jason, "~> 1.4"},
       {:jido_harness,
        github: "agentjido/jido_harness", ref: "8bf0d52f4fed0d8a9d2594000d8b3a775da16f8b"},

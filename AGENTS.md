@@ -13,6 +13,7 @@
 - Use `zoi` to validate configuration data.
 - Use the OTP `:gen_statem` behavior for workflow state management.
 - Use `erlexec` for operating-system process management.
+- Use the `git` package through `Hancho.Git` for Git commands. Run Git processes through erlexec.
 - Use `jido_harness` to call and manage all CLI coding agents.
 - Open any problem with CLI-agent calls or lifecycle management as an issue in `https://github.com/agentjido/jido_harness/issues`.
 
