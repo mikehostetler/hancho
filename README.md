@@ -6,10 +6,10 @@ Build and run it:
 
 ```sh
 mix escript.build
-./hancho
+./hancho --help
 ```
 
-The executable prints its version and exits.
+Print the installed version with `./hancho --version`.
 
 Initialize Hancho in a Git repository:
 

@@ -29,8 +29,17 @@ defmodule HanchoTest do
     def executable, do: {:error, :not_found}
   end
 
-  test "the CLI prints only its version" do
-    assert capture_io(fn -> Hancho.CLI.main([]) end) == "0.1.0\n"
+  test "the CLI has explicit help and version commands" do
+    assert capture_io(fn -> assert Hancho.CLI.run([]) == 0 end) =~ "Usage:"
+    assert capture_io(fn -> assert Hancho.CLI.run(["--help"]) == 0 end) =~ "hancho doctor"
+    assert capture_io(fn -> assert Hancho.CLI.run(["--version"]) == 0 end) == "0.1.0\n"
+  end
+
+  test "the CLI rejects an unknown command" do
+    output = capture_io(:stderr, fn -> assert Hancho.CLI.run(["unknown"]) == 2 end)
+
+    assert output ==
+             "ERROR: Unknown command: unknown\nRun 'hancho --help' for usage.\n"
   end
 
   test "doctor reports repository and Beadwork state" do
