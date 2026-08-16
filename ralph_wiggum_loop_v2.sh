@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Reference only: Hancho is the default factory driver. Keep this file for parity evidence.
 set -euo pipefail
 
 usage() {

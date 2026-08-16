@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            otp: "27"
+          - os: ubuntu-latest
+            otp: "28"
+          - os: macos-latest
+            otp: "29"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: "1.20"
+      - name: Install SQLite and tmux on Ubuntu
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y sqlite3 tmux
+      - run: mix check
+      - run: ./scripts/build-release.sh
+      - run: ./hancho version
