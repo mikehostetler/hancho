@@ -1,40 +1,52 @@
-# Hancho Local Runtime State and Logs
+# Hancho Repository-Local Runtime State and Logs
 
 Status: Early design idea
 
 ## Intent
 
-Hancho needs one local folder for durable operational state, logs, evidence, and recovery data.
+Hancho needs one folder inside each local Git repository for durable operational state, logs, evidence, and recovery data.
 
-This folder stays outside target repository worktrees. Hancho must not depend on an agent prompt, process memory, or temporary directory to recover a work order.
+This state belongs to the repository. It is not global user state. Hancho must not depend on an agent prompt, process memory, or temporary directory to recover a work order.
 
 ## Initial location
 
-Use one configurable data root.
+Store runtime data under the repository's Git common directory:
 
-- Environment override: `HANCHO_HOME`.
-- Initial default candidate: `~/.hancho/`.
-- Review platform-specific and XDG locations before the first public release.
+```text
+<git-common-dir>/hancho/
+```
 
-The path is a design candidate. It is not yet a stable interface.
+For a normal checkout, this path appears as:
+
+```text
+.git/hancho/
+```
+
+Hancho must resolve the path with `git rev-parse --git-common-dir`. It must not assume that `.git` is a directory. A linked worktree can use a `.git` file that points to the common Git directory.
+
+This location has three useful properties:
+
+- Runtime data cannot enter a commit.
+- All worktrees for one repository share the same runtime state.
+- A different repository or clone has separate Hancho state.
+
+An optional tracked `.hancho/` directory at the worktree root can hold workflow definitions, repository policy, and configuration. It must not hold runtime state or logs.
 
 ## Proposed layout
 
 ```text
-~/.hancho/
+<git-common-dir>/hancho/
 ├── hancho.sqlite3
-├── projects/
-│   └── <project-id>/
-│       ├── project.json
-│       └── runs/
-│           └── <run-id>/
-│               ├── run.json
-│               ├── events.jsonl
-│               ├── prompts/
-│               ├── logs/
-│               ├── checks/
-│               ├── artifacts/
-│               └── receipts/
+├── repository.json
+├── runs/
+│   └── <run-id>/
+│       ├── run.json
+│       ├── events.jsonl
+│       ├── prompts/
+│       ├── logs/
+│       ├── checks/
+│       ├── artifacts/
+│       └── receipts/
 ├── locks/
 └── tmp/
 ```
@@ -61,7 +73,7 @@ References:
 
 The initial schema can include:
 
-- Projects and repository identities.
+- The local repository identity and worktree bindings.
 - Workflow names and pinned versions.
 - Work orders and current states.
 - Append-only transition events.
@@ -74,23 +86,23 @@ The initial schema can include:
 
 Do not store large command output, harness streams, or generated reports as database values. Store these artifacts as files and index them in SQLite.
 
-## Project identity
+## Repository identity
 
-Do not use only the current checkout path as the project identity. A repository can move.
+The Git common directory defines the local runtime boundary. One Hancho database serves one local repository and all of its worktrees.
 
-The project record can use:
+The repository record can include:
 
-- A generated Hancho project ID.
+- A generated Hancho repository ID.
 - The normalized Git remote when one exists.
-- The Git common-directory identity.
-- The current local paths as changeable bindings.
+- The Git common-directory path.
+- The current worktree paths as changeable bindings.
 
-One repository can have several worktrees. All worktrees must resolve to the same Hancho project record.
+Moving a worktree must not create a new repository record. Creating a separate clone creates separate local Hancho state.
 
 ## Durability and recovery rules
 
 - Record a transition before Hancho starts the next station.
-- Record an external-effect intent before commit, push, pull-request, release, or deployment actions.
+- Record an external-effect intent before commit, push, pull request, release, or deployment actions.
 - Record the observed result after the effect.
 - Treat a crash between intent and result as an uncertain effect.
 - Reconcile the actual external state before a retry.
@@ -102,7 +114,7 @@ These rules support `hancho status`, `hancho resume`, and `hancho reconcile` aft
 
 ## Security and retention
 
-- Restrict the data root and database to the current user.
+- Restrict the repository runtime directory and database to the current user.
 - Redact secrets from harness and command logs before persistence when possible.
 - Do not copy full environment values into the database or logs.
 - Give prompts, raw output, checks, receipts, and reports separate retention classes.
@@ -111,9 +123,8 @@ These rules support `hancho status`, `hancho resume`, and `hancho reconcile` aft
 
 ## Open questions
 
-- Should Hancho use one global database or one database per project?
 - Should `events.jsonl` duplicate database events for direct inspection, or should SQLite be the only event store?
-- How should Hancho identify repositories that have no remote?
 - Which artifacts can contain source code or sensitive application data?
 - What are the default retention periods for completed, failed, and stopped runs?
 - When should DuckDB or another reporting store read a snapshot of the operational data?
+- Should Hancho support a controlled export and import when a repository is cloned again?

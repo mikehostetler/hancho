@@ -72,7 +72,7 @@ Separate the system into these parts:
 - A pure transition engine.
 - Versioned workflow definitions.
 - A durable run journal.
-- A local runtime folder for durable state, logs, and evidence. See [Hancho local runtime state and logs](hancho-local-runtime-state.md).
+- A repository-local runtime folder for durable state, logs, and evidence. See [Hancho local runtime state and logs](hancho-local-runtime-state.md).
 - Reusable stations.
 - Harness adapters for Grok, Zclaude, Codex, and later tools.
 - A Beadwork execution adapter.
