@@ -14,6 +14,8 @@ I use GitHub Issues and [Beadwork](https://github.com/jallum/beadwork) for issue
 
 ## Engineering workflow
 
+- [Elixir factory driver concept](elixir-factory-driver.md)
+
 I use the core [Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin) skills as a loop:
 
 1. Brainstorm (`ce-brainstorm`)
