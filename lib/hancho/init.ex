@@ -6,41 +6,25 @@ defmodule Hancho.Init do
 
   def run(options \\ []) do
     cwd = Keyword.get(options, :cwd, File.cwd!())
-    find_executable = Keyword.get(options, :find_executable, &System.find_executable/1)
-    command = Keyword.get(options, :command, &System.cmd/3)
+    project_api = Keyword.get(options, :project_api, Hancho.Project)
 
-    with {:ok, git} <- find_git(find_executable),
-         {:ok, repository} <- repository_root(command, git, cwd),
-         {:ok, path} <- create_runtime(repository),
-         :ok <- ensure_gitignore(repository) do
-      {:ok, path}
+    with {:ok, project} <- project_api.discover(cwd: cwd),
+         :ok <- create_runtime(project),
+         :ok <- ensure_gitignore(project.root) do
+      {:ok, project.hancho_dir}
+    else
+      {:error, :git_not_found} -> {:error, "Git executable not found in PATH."}
+      {:error, :not_git_repository} -> {:error, "Current directory is not in a Git repository."}
+      {:error, reason} -> {:error, format_error(reason)}
     end
   end
 
-  defp find_git(find_executable) do
-    case find_executable.("git") do
-      nil -> {:error, "Git executable not found in PATH."}
-      path -> {:ok, path}
-    end
-  end
-
-  defp repository_root(command, git, cwd) do
-    case command.(git, ["rev-parse", "--show-toplevel"], cd: cwd, stderr_to_stdout: true) do
-      {output, 0} -> {:ok, String.trim(output)}
-      {_output, _status} -> {:error, "Current directory is not in a Git repository."}
-    end
-  rescue
-    error -> {:error, Exception.message(error)}
-  end
-
-  defp create_runtime(repository) do
-    path = Path.join(repository, ".hancho")
-
-    with :ok <- File.mkdir_p(Path.join(path, "logs")),
-         :ok <- File.mkdir_p(Path.join(path, "state")),
-         :ok <- File.chmod(path, 0o700),
-         :ok <- write_initial_config(Path.join(path, "config.toml")) do
-      {:ok, path}
+  defp create_runtime(project) do
+    with :ok <- File.mkdir_p(project.logs_path),
+         :ok <- File.mkdir_p(project.state_path),
+         :ok <- File.chmod(project.hancho_dir, 0o700),
+         :ok <- write_initial_config(project.config_path) do
+      :ok
     end
   end
 
@@ -79,4 +63,7 @@ defmodule Hancho.Init do
   defp append_line(contents, line) do
     String.trim_trailing(contents) <> "\n" <> line <> "\n"
   end
+
+  defp format_error(reason) when is_binary(reason), do: reason
+  defp format_error(reason), do: inspect(reason)
 end

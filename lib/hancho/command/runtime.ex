@@ -1,4 +1,4 @@
-defmodule Hancho.ProcessManager do
+defmodule Hancho.Command.Runtime do
   @moduledoc false
 
   @helper_name "exec-port"

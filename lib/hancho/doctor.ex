@@ -5,25 +5,29 @@ defmodule Hancho.Doctor do
 
   def run(options \\ []) do
     cwd = Keyword.get(options, :cwd, File.cwd!())
-    find_executable = Keyword.get(options, :find_executable, &System.find_executable/1)
-    command = Keyword.get(options, :command, &System.cmd/3)
+    project_api = Keyword.get(options, :project_api, Hancho.Project)
+    git = Keyword.get(options, :git, Hancho.Git)
+    beadwork = Keyword.get(options, :beadwork, Hancho.Beadwork)
     harness = Keyword.get(options, :harness, Jido.Harness)
     start_harness = Keyword.get(options, :start_harness, &Hancho.Harness.ensure_started/0)
 
-    git = find_executable.("git")
-    beadwork = find_executable.("bw")
-    repository = repository_root(git, cwd, command)
+    git_executable = git.executable()
+    project_result = project_api.discover(cwd: cwd, git: git)
+    git_status = git_status(git, project_result)
+    beadwork_executable = beadwork.executable()
+    beadwork_version = beadwork_version(beadwork, cwd, beadwork_executable)
+    beadwork_config = beadwork_config(beadwork, project_result, beadwork_executable)
     harness_start = start_harness.()
 
     checks = [
-      executable_check("git", git),
-      repository_check(repository),
-      branch_check(git, repository, command),
-      worktree_check(git, repository, command),
-      state_directory_check(repository),
-      executable_check("beadwork", beadwork),
-      beadwork_version_check(beadwork, cwd, command),
-      beadwork_repository_check(beadwork, repository, command),
+      executable_check("git", git_executable),
+      repository_check(project_result),
+      branch_check(git_status),
+      worktree_check(git_status),
+      state_directory_check(project_result),
+      executable_check("beadwork", beadwork_executable),
+      beadwork_version_check(beadwork_version),
+      beadwork_repository_check(beadwork_config),
       harness_check(harness, harness_start),
       harness_provider_check(harness, harness_start)
     ]
@@ -40,86 +44,68 @@ defmodule Hancho.Doctor do
     Enum.join(["Hancho doctor" | lines], "\n")
   end
 
-  defp executable_check(name, nil),
+  defp git_status(git, {:ok, project}), do: git.status(working_dir: project.root)
+  defp git_status(_git, {:error, _reason}), do: {:error, :repository_unavailable}
+
+  defp beadwork_version(_beadwork, _cwd, {:error, _reason}), do: {:error, :not_found}
+  defp beadwork_version(beadwork, cwd, {:ok, _path}), do: beadwork.version(working_dir: cwd)
+
+  defp beadwork_config(_beadwork, _project, {:error, _reason}), do: {:error, :not_found}
+
+  defp beadwork_config(beadwork, {:ok, project}, {:ok, _path}) do
+    beadwork.repository_config(working_dir: project.root)
+  end
+
+  defp beadwork_config(_beadwork, {:error, _reason}, {:ok, _path}),
+    do: {:error, :repository_unavailable}
+
+  defp executable_check(name, {:error, :not_found}),
     do: check(name, :fail, "Executable not found in PATH.")
 
-  defp executable_check(name, path), do: check(name, :pass, path)
+  defp executable_check(name, {:ok, path}), do: check(name, :pass, path)
 
-  defp repository_root(nil, _cwd, _command), do: nil
-
-  defp repository_root(git, cwd, command) do
-    case run_command(command, git, ["rev-parse", "--show-toplevel"], cwd) do
-      {:ok, root} -> root
-      {:error, _detail} -> nil
-    end
-  end
-
-  defp repository_check(nil),
+  defp repository_check({:error, _reason}),
     do: check("repository", :fail, "Current directory is not in a Git repository.")
 
-  defp repository_check(root), do: check("repository", :pass, root)
+  defp repository_check({:ok, project}), do: check("repository", :pass, project.root)
 
-  defp branch_check(_git, nil, _command),
-    do: check("branch", :fail, "Repository is not available.")
+  defp branch_check({:ok, %{branch: branch}}) when branch in [nil, "HEAD (no branch)"],
+    do: check("branch", :warning, "HEAD is detached.")
 
-  defp branch_check(git, repository, command) do
-    case run_command(command, git, ["branch", "--show-current"], repository) do
-      {:ok, ""} -> check("branch", :warning, "HEAD is detached.")
-      {:ok, branch} -> check("branch", :pass, branch)
-      {:error, detail} -> check("branch", :fail, detail)
-    end
-  end
+  defp branch_check({:ok, %{branch: branch}}), do: check("branch", :pass, branch)
+  defp branch_check({:error, reason}), do: check("branch", :fail, format_reason(reason))
 
-  defp worktree_check(_git, nil, _command),
-    do: check("worktree", :fail, "Repository is not available.")
+  defp worktree_check({:ok, %{entries: []}}), do: check("worktree", :pass, "clean")
 
-  defp worktree_check(git, repository, command) do
-    case run_command(command, git, ["status", "--porcelain"], repository) do
-      {:ok, ""} -> check("worktree", :pass, "clean")
-      {:ok, _changes} -> check("worktree", :warning, "uncommitted changes")
-      {:error, detail} -> check("worktree", :fail, detail)
-    end
-  end
+  defp worktree_check({:ok, %{entries: _entries}}),
+    do: check("worktree", :warning, "uncommitted changes")
 
-  defp state_directory_check(nil),
+  defp worktree_check({:error, reason}), do: check("worktree", :fail, format_reason(reason))
+
+  defp state_directory_check({:error, _reason}),
     do: check("state", :warning, "Repository is not available.")
 
-  defp state_directory_check(repository) do
-    path = Path.join(repository, ".hancho")
-
-    if File.dir?(path) do
-      check("state", :pass, path)
+  defp state_directory_check({:ok, project}) do
+    if File.dir?(project.hancho_dir) do
+      check("state", :pass, project.hancho_dir)
     else
-      check("state", :warning, "#{path} does not exist.")
+      check("state", :warning, "#{project.hancho_dir} does not exist.")
     end
   end
 
-  defp beadwork_version_check(nil, _cwd, _command),
-    do: check("beadwork_version", :fail, "Beadwork is not available.")
+  defp beadwork_version_check({:ok, version}),
+    do: check("beadwork_version", :pass, version)
 
-  defp beadwork_version_check(beadwork, cwd, command) do
-    case run_command(command, beadwork, ["--version"], cwd) do
-      {:ok, version} -> check("beadwork_version", :pass, version)
-      {:error, detail} -> check("beadwork_version", :fail, detail)
-    end
+  defp beadwork_version_check({:error, reason}),
+    do: check("beadwork_version", :fail, format_reason(reason, "Beadwork is not available."))
+
+  defp beadwork_repository_check({:ok, config}) do
+    detail = config |> String.split("\n", trim: true) |> Enum.join(", ")
+    check("beadwork_repository", :pass, detail)
   end
 
-  defp beadwork_repository_check(nil, _repository, _command),
-    do: check("beadwork_repository", :fail, "Beadwork is not available.")
-
-  defp beadwork_repository_check(_beadwork, nil, _command),
-    do: check("beadwork_repository", :fail, "Repository is not available.")
-
-  defp beadwork_repository_check(beadwork, repository, command) do
-    case run_command(command, beadwork, ["config", "list"], repository) do
-      {:ok, config} ->
-        detail = config |> String.split("\n", trim: true) |> Enum.join(", ")
-        check("beadwork_repository", :pass, detail)
-
-      {:error, _detail} ->
-        check("beadwork_repository", :fail, "Not initialized. Run 'bw init'.")
-    end
-  end
+  defp beadwork_repository_check({:error, _reason}),
+    do: check("beadwork_repository", :fail, "Not initialized. Run 'bw init'.")
 
   defp harness_check(harness, :ok) do
     check("jido_harness", :pass, "version #{harness.version()}")
@@ -157,14 +143,9 @@ defmodule Hancho.Doctor do
     kind, reason -> check("cli_agents", :fail, "#{kind}: #{inspect(reason)}")
   end
 
-  defp run_command(command, executable, arguments, cwd) do
-    case command.(executable, arguments, cd: cwd, stderr_to_stdout: true) do
-      {output, 0} -> {:ok, String.trim(output)}
-      {output, _status} -> {:error, String.trim(output)}
-    end
-  rescue
-    error -> {:error, Exception.message(error)}
-  end
+  defp format_reason(:not_found, fallback), do: fallback
+  defp format_reason(reason, _fallback), do: format_reason(reason)
+  defp format_reason(reason), do: inspect(reason)
 
   defp check(name, status, detail), do: %{name: name, status: status, detail: detail}
 

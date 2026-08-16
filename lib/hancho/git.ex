@@ -6,7 +6,16 @@ defmodule Hancho.Git do
   group when a timeout occurs.
   """
 
-  @type option :: {:working_dir, String.t()} | {:timeout, pos_integer()}
+  @type option ::
+          {:binary, String.t()} | {:working_dir, String.t()} | {:timeout, pos_integer()}
+
+  @spec executable() :: {:ok, String.t()} | {:error, :not_found}
+  def executable do
+    case System.find_executable("git") do
+      nil -> {:error, :not_found}
+      path -> {:ok, path}
+    end
+  end
 
   @spec config([option()]) :: Git.Config.t()
   def config(options \\ []) do
@@ -20,6 +29,8 @@ defmodule Hancho.Git do
     options
     |> config()
     |> then(&Git.Info.root(config: &1))
+  rescue
+    error -> {:error, {:exception, error}}
   end
 
   @spec status([option()]) :: {:ok, Git.Status.t()} | {:error, term()}
@@ -27,5 +38,7 @@ defmodule Hancho.Git do
     options
     |> config()
     |> then(&Git.status(config: &1))
+  rescue
+    error -> {:error, {:exception, error}}
   end
 end

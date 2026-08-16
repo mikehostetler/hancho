@@ -10,31 +10,38 @@ defmodule HanchoTest do
     def status(:pi), do: {:ok, %{smoke_ready: false}}
   end
 
+  defmodule ProjectAPI do
+    def discover(_options), do: {:ok, Hancho.Project.new("/repo")}
+  end
+
+  defmodule GitAPI do
+    def executable, do: {:ok, "/usr/bin/git"}
+    def status(_options), do: {:ok, %Git.Status{branch: "main", entries: []}}
+  end
+
+  defmodule BeadworkAPI do
+    def executable, do: {:ok, "/usr/local/bin/bw"}
+    def version(_options), do: {:ok, "bw 0.13.2"}
+    def repository_config(_options), do: {:ok, "prefix=hancho\nversion=2"}
+  end
+
+  defmodule MissingBeadworkAPI do
+    def executable, do: {:error, :not_found}
+  end
+
   test "the CLI prints only its version" do
     assert capture_io(fn -> Hancho.CLI.main([]) end) == "0.1.0\n"
   end
 
   test "doctor reports repository and Beadwork state" do
-    command = fn
-      "/usr/bin/git", ["rev-parse", "--show-toplevel"], _options -> {"/repo\n", 0}
-      "/usr/bin/git", ["branch", "--show-current"], _options -> {"main\n", 0}
-      "/usr/bin/git", ["status", "--porcelain"], _options -> {"", 0}
-      "/usr/local/bin/bw", ["--version"], _options -> {"bw 0.13.2\n", 0}
-      "/usr/local/bin/bw", ["config", "list"], _options -> {"prefix=hancho\nversion=2\n", 0}
-    end
-
-    find_executable = fn
-      "git" -> "/usr/bin/git"
-      "bw" -> "/usr/local/bin/bw"
-    end
-
     output =
       capture_io(fn ->
         assert Hancho.CLI.run(
                  ["doctor"],
                  cwd: "/repo",
-                 command: command,
-                 find_executable: find_executable,
+                 project_api: ProjectAPI,
+                 git: GitAPI,
+                 beadwork: BeadworkAPI,
                  harness: Harness,
                  start_harness: fn -> :ok end
                ) == 0
@@ -48,24 +55,14 @@ defmodule HanchoTest do
   end
 
   test "doctor fails when Beadwork is not installed" do
-    command = fn
-      "/usr/bin/git", ["rev-parse", "--show-toplevel"], _options -> {"/repo\n", 0}
-      "/usr/bin/git", ["branch", "--show-current"], _options -> {"main\n", 0}
-      "/usr/bin/git", ["status", "--porcelain"], _options -> {"", 0}
-    end
-
-    find_executable = fn
-      "git" -> "/usr/bin/git"
-      "bw" -> nil
-    end
-
     output =
       capture_io(fn ->
         assert Hancho.CLI.run(
                  ["doctor"],
                  cwd: "/repo",
-                 command: command,
-                 find_executable: find_executable,
+                 project_api: ProjectAPI,
+                 git: GitAPI,
+                 beadwork: MissingBeadworkAPI,
                  harness: Harness,
                  start_harness: fn -> :ok end
                ) == 1
