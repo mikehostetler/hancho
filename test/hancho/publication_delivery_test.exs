@@ -1,6 +1,8 @@
 defmodule Hancho.PublicationDeliveryTest do
   use Hancho.RepositoryCase, async: false
 
+  @moduletag :integration
+
   alias Hancho.Delivery.Request
 
   alias Hancho.{

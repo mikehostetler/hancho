@@ -1,6 +1,8 @@
 defmodule Hancho.SecurityCleanupTest do
   use Hancho.RepositoryCase, async: false
 
+  @moduletag :integration
+
   alias Hancho.{Artifacts, Cleanup, Config, Journal, Redactor, Repository, Runner, SQLite, Store}
 
   setup do

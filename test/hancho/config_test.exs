@@ -75,4 +75,23 @@ defmodule Hancho.ConfigTest do
     assert error.message =~ "unknown station route"
     assert error.message =~ "requires capability edit_worktree"
   end
+
+  test "uses the configuration schema for nested value types" do
+    config = %{
+      "schema_version" => 1,
+      "wip_limit" => 1,
+      "default_harness" => "fake",
+      "harnesses" => %{
+        "fake" => %{
+          "adapter" => "builtin:fake",
+          "command" => 42,
+          "capabilities" => ["read"]
+        }
+      },
+      "routes" => %{}
+    }
+
+    assert {:error, error} = Config.validate(config)
+    assert error.message =~ "harnesses.fake.command invalid type: expected string"
+  end
 end

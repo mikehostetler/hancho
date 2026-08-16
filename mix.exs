@@ -8,9 +8,9 @@ defmodule Hancho.MixProject do
       elixir: "~> 1.20.0",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
-      escript: [main_module: Hancho.CLI],
+      escript: [main_module: Hancho.CLI, include_priv_for: [:erlexec]],
       aliases: aliases(),
-      deps: []
+      deps: deps()
     ]
   end
 
@@ -22,12 +22,21 @@ defmodule Hancho.MixProject do
   end
 
   def cli do
-    [preferred_envs: [check: :test]]
+    [preferred_envs: [{:check, :test}, {:"test.fast", :test}]]
   end
 
   defp aliases do
     [
-      check: ["format --check-formatted", "compile --warnings-as-errors", "test"]
+      {:check, ["format --check-formatted", "compile --warnings-as-errors", "test"]},
+      {:"test.fast", ["test --exclude integration --exclude acceptance"]}
+    ]
+  end
+
+  defp deps do
+    [
+      {:erlexec, "~> 2.3.4", runtime: false},
+      {:toml_elixir, "~> 3.1"},
+      {:zoi, "~> 0.18.7"}
     ]
   end
 

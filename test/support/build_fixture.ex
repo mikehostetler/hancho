@@ -94,6 +94,7 @@ defmodule Hancho.BuildFixture do
       "instructions" => "Add a small formatted Elixir module.",
       "allowed_scopes" => scopes,
       "profile" => "elixir_library",
+      "checks" => [["true"], ["true"], ["true"]],
       "acceptance_conditions" => ["The project compiles and tests pass."]
     }
   end

@@ -12,6 +12,7 @@ defmodule Hancho.DoctorTest do
     result = Doctor.run(repository)
     assert result.result == "ok"
     assert Enum.all?(Enum.filter(result.checks, & &1.required), &(&1.status == "pass"))
+    assert Enum.find(result.checks, &(&1.name == "process_manager")).status == "pass"
   end
 
   test "identifies an incompatible Erlang runtime and a missing native dependency" do

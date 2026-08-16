@@ -1,6 +1,8 @@
 defmodule Hancho.Host.TmuxTest do
   use Hancho.RepositoryCase, async: false
 
+  @moduletag :integration
+
   alias Hancho.Host.Tmux
   alias Hancho.Repository
 

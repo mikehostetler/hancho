@@ -1,7 +1,7 @@
 defmodule Hancho.Factory.Controller do
   @moduledoc "Owns one durable queue and supervises work for one local factory."
 
-  use GenServer
+  @behaviour :gen_statem
 
   alias Hancho.Factory.{Client, Store, Work}
 
@@ -18,7 +18,7 @@ defmodule Hancho.Factory.Controller do
 
   @type state :: :operating | :paused | :stopping | :unhealthy
 
-  @spec start_link(Repository.t(), keyword()) :: GenServer.on_start()
+  @spec start_link(Repository.t(), keyword()) :: :gen_statem.start_ret()
   def start_link(repository, options \\ []) do
     DynamicSupervisor.start_child(Hancho.FactorySupervisor, %{
       id: {__MODULE__, repository.id || repository.root},
@@ -31,10 +31,13 @@ defmodule Hancho.Factory.Controller do
 
   @doc false
   def start_controller(repository, options),
-    do: GenServer.start_link(__MODULE__, {repository, options})
+    do: :gen_statem.start_link(__MODULE__, {repository, options}, [])
 
   @spec stop(pid(), boolean()) :: :ok
-  def stop(controller, force \\ false), do: GenServer.cast(controller, {:stop, force})
+  def stop(controller, force \\ false), do: :gen_statem.cast(controller, {:stop, force})
+
+  @impl true
+  def callback_mode, do: :handle_event_function
 
   @impl true
   def init({repository, options}) do
@@ -83,9 +86,8 @@ defmodule Hancho.Factory.Controller do
         )
 
       :ok = write_metadata(data)
-      schedule_tick(data)
       notify(data, "factory #{factory_id} #{state}")
-      {:ok, data}
+      {:ok, state, data, [tick_action(data)]}
     else
       {:error, %Error{} = error} -> {:stop, error}
       {:error, reason} -> {:stop, startup_error(reason)}
@@ -93,32 +95,34 @@ defmodule Hancho.Factory.Controller do
   end
 
   @impl true
-  def handle_call({:control, request}, _from, data) do
+  def handle_event({:call, from}, {:control, request}, state, data) do
     if request["factory_id"] != data.factory_id do
-      {:reply, error_response(:factory_identity_mismatch, "Factory identity does not match.", 77),
-       data}
+      reply = error_response(:factory_identity_mismatch, "Factory identity does not match.", 77)
+      reply_result(from, state, data, reply)
     else
-      handle_command(request["command"], request["arguments"] || %{}, data)
+      {:reply, reply, next} =
+        handle_command(request["command"], request["arguments"] || %{}, data)
+
+      reply_result(from, state, next, reply)
     end
   end
 
   @impl true
-  def handle_cast({:stop, force}, data) do
+  def handle_event(:cast, {:stop, force}, state, data) do
     {_reply, next} = stop_command(force, data)
-    {:noreply, next}
+    transition_result(state, next)
   end
 
   @impl true
-  def handle_info(:tick, data) do
-    data = release_ready_work(data)
-    schedule_tick(data)
-    {:noreply, data}
+  def handle_event(:state_timeout, :tick, state, data) do
+    next = release_ready_work(data)
+    transition_result(state, next, [tick_action(next)])
   end
 
-  def handle_info({reference, result}, data) when is_reference(reference) do
+  def handle_event(:info, {reference, result}, state, data) when is_reference(reference) do
     case Map.pop(data.active, reference) do
       {nil, _active} ->
-        {:noreply, data}
+        {:keep_state, data}
 
       {%{task: task, queue_id: queue_id}, active} ->
         Process.demonitor(task.ref, [:flush])
@@ -126,14 +130,14 @@ defmodule Hancho.Factory.Controller do
         next = %{data | active: active}
         notify(next, queue_event(queue_id, result))
         :ok = write_metadata(next)
-        maybe_stop(next)
+        transition_result(state, maybe_stop(next))
     end
   end
 
-  def handle_info({:DOWN, reference, :process, _pid, reason}, data) do
+  def handle_event(:info, {:DOWN, reference, :process, _pid, reason}, state, data) do
     case Map.pop(data.active, reference) do
       {nil, _active} ->
-        {:noreply, data}
+        {:keep_state, data}
 
       {%{queue_id: queue_id}, active} ->
         error = %{code: "worker_exit", message: inspect(reason)}
@@ -141,17 +145,17 @@ defmodule Hancho.Factory.Controller do
         next = %{data | active: active}
         notify(next, "queue #{queue_id} failed: #{inspect(reason)}")
         :ok = write_metadata(next)
-        maybe_stop(next)
+        transition_result(state, maybe_stop(next))
     end
   end
 
-  def handle_info(:stop_now, data), do: {:stop, :normal, data}
+  def handle_event(:info, :stop_now, _state, data), do: {:stop, :normal, data}
 
-  def handle_info({:EXIT, _pid, _reason}, data), do: {:noreply, data}
-  def handle_info(_message, data), do: {:noreply, data}
+  def handle_event(:info, {:EXIT, _pid, _reason}, _state, data), do: {:keep_state, data}
+  def handle_event(_event_type, _event, _state, data), do: {:keep_state, data}
 
   @impl true
-  def terminate(reason, data) do
+  def terminate(reason, state, data) do
     if Map.has_key?(data, :listener), do: :gen_tcp.close(data.listener)
     if Map.has_key?(data, :acceptor), do: Process.exit(data.acceptor, :kill)
 
@@ -169,7 +173,7 @@ defmodule Hancho.Factory.Controller do
         config_hash: data.config.hash,
         state: "stopped",
         health:
-          if(reason in [:normal, :shutdown] and data.state == :stopping,
+          if(reason in [:normal, :shutdown] and state == :stopping,
             do: "stopped",
             else: "abnormal_stop"
           )
@@ -288,12 +292,12 @@ defmodule Hancho.Factory.Controller do
             "Operator forced termination"
           )
 
-        Process.send_after(self(), :stop_now, 500)
+        send(self(), :stop_now)
         {ok_response(status(next)), next}
 
       true ->
         next = change_state(data, :stopping, "stop_requested", "Operator requested a safe stop")
-        if map_size(next.active) == 0, do: Process.send_after(self(), :stop_now, 500)
+        if map_size(next.active) == 0, do: send(self(), :stop_now)
         {ok_response(status(next)), next}
     end
   end
@@ -357,11 +361,11 @@ defmodule Hancho.Factory.Controller do
   defp queue_event(queue_id, _result), do: "queue #{queue_id} failed"
 
   defp maybe_stop(%{state: :stopping, active: active} = data) when map_size(active) == 0 do
-    Process.send_after(self(), :stop_now, 500)
-    {:noreply, data}
+    send(self(), :stop_now)
+    data
   end
 
-  defp maybe_stop(data), do: {:noreply, data}
+  defp maybe_stop(data), do: data
 
   defp status(data) do
     {:ok, queue} = Store.list(data.repository)
@@ -443,9 +447,34 @@ defmodule Hancho.Factory.Controller do
     end
   end
 
-  defp schedule_tick(data) do
+  defp tick_action(data) do
     interval = get_in(data.config.data, ["factory", "poll_interval_ms"]) || 500
-    Process.send_after(self(), :tick, interval)
+    {:state_timeout, interval, :tick}
+  end
+
+  defp reply_result(from, state, data, reply) do
+    transition_result(state, data, [{:reply, from, reply}])
+  end
+
+  defp transition_result(state, data, actions \\ [])
+
+  defp transition_result(state, %{state: state} = data, actions) do
+    {:keep_state, data, actions}
+  end
+
+  defp transition_result(_state, data, actions) do
+    actions = ensure_tick_action(data, actions)
+    {:next_state, data.state, data, actions}
+  end
+
+  defp ensure_tick_action(%{state: :stopping}, actions), do: actions
+
+  defp ensure_tick_action(data, actions) do
+    if Enum.any?(actions, &match?({:state_timeout, _time, :tick}, &1)) do
+      actions
+    else
+      [tick_action(data) | actions]
+    end
   end
 
   defp required_doctor_checks(repository) do
@@ -560,7 +589,7 @@ defmodule Hancho.Factory.Controller do
     response =
       with {:ok, line} <- :gen_tcp.recv(socket, 0, 5_000),
            request when is_map(request) <- JSON.decode!(line) do
-        GenServer.call(controller, {:control, request}, 30_000)
+        :gen_statem.call(controller, {:control, request}, 30_000)
       else
         _ -> error_response(:invalid_control_request, "The control request is invalid.", 64)
       end

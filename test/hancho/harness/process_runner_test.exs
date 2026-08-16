@@ -1,5 +1,7 @@
 defmodule Hancho.Harness.ProcessRunnerTest do
-  use Hancho.RepositoryCase, async: true
+  use Hancho.RepositoryCase, async: false
+
+  @moduletag :integration
 
   alias Hancho.Harness.ProcessRunner
 
@@ -73,6 +75,30 @@ defmodule Hancho.Harness.ProcessRunnerTest do
     assert status != 0
   end
 
+  test "stops a process group when its Elixir owner exits" do
+    root = temporary_directory!()
+    process_file = Path.join(root, "process.pid")
+
+    script =
+      executable!(
+        root,
+        "owned",
+        "#!/bin/sh\nprintf '%s' \"$$\" > \"$1\"\nsleep 30 &\nwait\n"
+      )
+
+    owner =
+      spawn(fn ->
+        ProcessRunner.run(script, [process_file],
+          stdout_path: Path.join(root, "owned.out"),
+          stderr_path: Path.join(root, "owned.err")
+        )
+      end)
+
+    wait_for_file(process_file)
+    Process.exit(owner, :kill)
+    assert_process_stops(File.read!(process_file))
+  end
+
   defp executable!(root, name, content) do
     path = Path.join(root, name)
     File.write!(path, content)
@@ -80,7 +106,7 @@ defmodule Hancho.Harness.ProcessRunnerTest do
     path
   end
 
-  defp wait_for_file(path, attempts \\ 50)
+  defp wait_for_file(path, attempts \\ 200)
   defp wait_for_file(_path, 0), do: flunk("child pid file was not created")
 
   defp wait_for_file(path, attempts) do
@@ -89,6 +115,20 @@ defmodule Hancho.Harness.ProcessRunnerTest do
     else
       Process.sleep(10)
       wait_for_file(path, attempts - 1)
+    end
+  end
+
+  defp assert_process_stops(pid, attempts \\ 100)
+  defp assert_process_stops(_pid, 0), do: flunk("owned process did not stop")
+
+  defp assert_process_stops(pid, attempts) do
+    case System.cmd("kill", ["-0", pid], stderr_to_stdout: true) do
+      {_output, 0} ->
+        Process.sleep(20)
+        assert_process_stops(pid, attempts - 1)
+
+      _result ->
+        assert true
     end
   end
 end

@@ -1,5 +1,7 @@
 defmodule Hancho.BuildRunnerTest do
-  use Hancho.RepositoryCase, async: false
+  use Hancho.RepositoryCase, async: true
+
+  @moduletag :integration
 
   alias Hancho.{BuildRunner, Config, Git, Journal, JSON, ReadModel, Repository}
 
@@ -94,7 +96,11 @@ defmodule Hancho.BuildRunnerTest do
 
     assert {:ok, outcome} =
              BuildRunner.run(repository, "build-5",
-               work_spec: Hancho.BuildFixture.spec("build-5")
+               work_spec:
+                 Hancho.BuildFixture.spec("build-5")
+                 |> Map.put("checks", [
+                   ["sh", "-c", "! grep -q 'this is invalid' lib/added.ex"]
+                 ])
              )
 
     assert outcome.work_order["state"] == "candidate_ready"
@@ -138,7 +144,11 @@ defmodule Hancho.BuildRunnerTest do
     {:ok, _} = Repository.init(repository)
     Hancho.BuildFixture.configure_adapter!(root, :success)
     {:ok, repository} = Repository.discover(root)
-    spec = Hancho.BuildFixture.spec("phoenix-build") |> Map.put("profile", "phoenix_private")
+
+    spec =
+      Hancho.BuildFixture.spec("phoenix-build")
+      |> Map.put("profile", "phoenix_private")
+      |> Map.delete("checks")
 
     assert {:ok, outcome} = BuildRunner.run(repository, "phoenix-build", work_spec: spec)
     assert outcome.work_order["state"] == "candidate_ready"

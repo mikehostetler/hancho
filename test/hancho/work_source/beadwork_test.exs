@@ -1,6 +1,8 @@
 defmodule Hancho.WorkSource.BeadworkTest do
   use Hancho.RepositoryCase, async: false
 
+  @moduletag :integration
+
   alias Hancho.WorkSource.Beadwork
   alias Hancho.{Config, Journal, Repository}
 

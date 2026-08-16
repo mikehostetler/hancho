@@ -1,5 +1,7 @@
 defmodule Hancho.OperationsTest do
-  use Hancho.RepositoryCase, async: false
+  use Hancho.RepositoryCase, async: true
+
+  @moduletag :integration
 
   alias Hancho.Workflow.Event
   alias Hancho.{Config, Journal, Operations, Repository, Runner}

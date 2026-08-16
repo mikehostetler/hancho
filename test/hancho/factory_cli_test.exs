@@ -1,6 +1,8 @@
 defmodule Hancho.FactoryCLITest do
   use Hancho.RepositoryCase, async: false
 
+  @moduletag :integration
+
   import ExUnit.CaptureIO
 
   alias Hancho.Factory.{Client, Controller, Store}

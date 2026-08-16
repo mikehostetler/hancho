@@ -16,7 +16,7 @@ defmodule Hancho.Store do
           newer_schema_error(version)
 
         version in [nil, 0] ->
-          with :ok <- SQLite.execute(path, migration_v1()), do: migrate(path)
+          SQLite.execute(path, Enum.join([migration_v1(), migration_v2(), migration_v3()], "\n"))
 
         version == 1 ->
           with :ok <- SQLite.execute(path, migration_v2()), do: migrate(path)

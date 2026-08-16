@@ -1,7 +1,7 @@
 defmodule Hancho.Harness.ProcessRunner do
   @moduledoc false
 
-  alias Hancho.Error
+  alias Hancho.{Error, OSProcess}
 
   @poll_ms 25
 
@@ -17,89 +17,108 @@ defmodule Hancho.Harness.ProcessRunner do
     File.mkdir_p!(Path.dirname(stdout_path))
     File.mkdir_p!(Path.dirname(stderr_path))
 
-    shell_script = ~s(out="$1"; err="$2"; shift 2; exec "$@" >"$out" 2>"$err")
-    executable = resolve_executable(command, cwd)
-    shell = System.find_executable("sh") || "/bin/sh"
+    with {:ok, stdout, stderr} <- open_logs(stdout_path, stderr_path) do
+      try do
+        executable = resolve_executable(command, cwd)
 
-    port =
-      Port.open(
-        {:spawn_executable, shell},
-        [
-          :binary,
-          :exit_status,
-          :hide,
-          {:cd, cwd},
-          {:args,
-           ["-c", shell_script, "hancho-adapter", stdout_path, stderr_path, executable | args]}
-        ]
-      )
+        case OSProcess.start(executable, args, cwd: cwd) do
+          {:ok, process} ->
+            await(%{
+              process: process,
+              started: System.monotonic_time(:millisecond),
+              timeout_ms: timeout_ms,
+              max_output_bytes: max_output_bytes,
+              output_bytes: 0,
+              stdout: stdout,
+              stderr: stderr,
+              stdout_path: stdout_path,
+              stderr_path: stderr_path,
+              cancel_ref: cancel_ref
+            })
 
-    {:os_pid, os_pid} = Port.info(port, :os_pid)
-    started = System.monotonic_time(:millisecond)
-
-    await(
-      port,
-      os_pid,
-      started,
-      timeout_ms,
-      max_output_bytes,
-      stdout_path,
-      stderr_path,
-      cancel_ref
-    )
-  rescue
-    error in ErlangError ->
-      {:error,
-       %Error{
-         code: :process_start_failed,
-         exit_status: 69,
-         message: "Cannot start '#{command}': #{Exception.message(error)}"
-       }}
-  end
-
-  defp await(port, os_pid, started, timeout_ms, max_bytes, stdout, stderr, cancel_ref) do
-    elapsed = System.monotonic_time(:millisecond) - started
-
-    cond do
-      elapsed >= timeout_ms ->
-        terminate_tree(os_pid)
-        close_port(port)
-        {:ok, process_result("timeout", nil, stdout, stderr)}
-
-      output_size(stdout) + output_size(stderr) > max_bytes ->
-        terminate_tree(os_pid)
-        close_port(port)
-        {:ok, process_result("output_limit", nil, stdout, stderr)}
-
-      true ->
-        receive do
-          {^port, {:exit_status, status}} ->
-            result_status = if status == 0, do: "success", else: "failure"
-            {:ok, process_result(result_status, status, stdout, stderr)}
-
-          {:hancho_cancel, ^cancel_ref} when not is_nil(cancel_ref) ->
-            terminate_tree(os_pid)
-            close_port(port)
-            {:ok, process_result("cancelled", nil, stdout, stderr)}
-
-          {^port, {:data, _data}} ->
-            await(port, os_pid, started, timeout_ms, max_bytes, stdout, stderr, cancel_ref)
-        after
-          @poll_ms ->
-            await(port, os_pid, started, timeout_ms, max_bytes, stdout, stderr, cancel_ref)
+          {:error, reason} ->
+            {:error, process_error(command, reason)}
         end
+      after
+        File.close(stdout)
+        File.close(stderr)
+      end
+    else
+      {:error, reason} -> {:error, process_error(command, reason)}
+    end
+  rescue
+    error in ErlangError -> {:error, process_error(command, Exception.message(error))}
+  end
+
+  defp open_logs(stdout_path, stderr_path) do
+    with {:ok, stdout} <- File.open(stdout_path, [:write, :binary]) do
+      case File.open(stderr_path, [:write, :binary]) do
+        {:ok, stderr} ->
+          {:ok, stdout, stderr}
+
+        {:error, reason} ->
+          File.close(stdout)
+          {:error, reason}
+      end
     end
   end
 
-  defp process_result(status, exit_status, stdout, stderr) do
-    %{status: status, exit_status: exit_status, stdout_path: stdout, stderr_path: stderr}
+  defp await(state) do
+    elapsed = System.monotonic_time(:millisecond) - state.started
+
+    if elapsed >= state.timeout_ms do
+      stop(state.process)
+      {:ok, process_result("timeout", nil, state)}
+    else
+      receive do
+        {OSProcess, reference, :stdout, data}
+        when reference == state.process.reference ->
+          receive_output(:stdout, data, state)
+
+        {OSProcess, reference, :stderr, data}
+        when reference == state.process.reference ->
+          receive_output(:stderr, data, state)
+
+        {OSProcess, reference, :exit, status}
+        when reference == state.process.reference ->
+          result_status = if status == 0, do: "success", else: "failure"
+          {:ok, process_result(result_status, status, state)}
+
+        {:hancho_cancel, cancel_ref}
+        when not is_nil(state.cancel_ref) and cancel_ref == state.cancel_ref ->
+          stop(state.process)
+          {:ok, process_result("cancelled", nil, state)}
+      after
+        @poll_ms -> await(state)
+      end
+    end
   end
 
-  defp output_size(path) do
-    case File.stat(path) do
-      {:ok, stat} -> stat.size
-      {:error, _} -> 0
+  defp receive_output(stream, data, state) do
+    device = Map.fetch!(state, stream)
+    :ok = IO.binwrite(device, data)
+    next = %{state | output_bytes: state.output_bytes + IO.iodata_length(data)}
+
+    if next.output_bytes > next.max_output_bytes do
+      stop(next.process)
+      {:ok, process_result("output_limit", nil, next)}
+    else
+      await(next)
     end
+  end
+
+  defp stop(process) do
+    _result = OSProcess.stop(process)
+    :ok
+  end
+
+  defp process_result(status, exit_status, state) do
+    %{
+      status: status,
+      exit_status: exit_status,
+      stdout_path: state.stdout_path,
+      stderr_path: state.stderr_path
+    }
   end
 
   defp resolve_executable(command, cwd) do
@@ -111,44 +130,11 @@ defmodule Hancho.Harness.ProcessRunner do
     end
   end
 
-  defp terminate_tree(pid) do
-    descendants(pid)
-    |> Enum.reverse()
-    |> Enum.each(&signal(&1, "TERM"))
-
-    signal(pid, "TERM")
-    Process.sleep(100)
-
-    descendants(pid)
-    |> Enum.reverse()
-    |> Enum.each(&signal(&1, "KILL"))
-
-    signal(pid, "KILL")
-  end
-
-  defp descendants(pid) do
-    children =
-      case System.cmd("pgrep", ["-P", to_string(pid)], stderr_to_stdout: true) do
-        {output, 0} -> output |> String.split("\n", trim: true) |> Enum.map(&String.to_integer/1)
-        _ -> []
-      end
-
-    children ++ Enum.flat_map(children, &descendants/1)
-  rescue
-    _ -> []
-  end
-
-  defp signal(pid, signal) do
-    System.cmd("kill", ["-#{signal}", to_string(pid)], stderr_to_stdout: true)
-    :ok
-  rescue
-    _ -> :ok
-  end
-
-  defp close_port(port) do
-    if Port.info(port), do: Port.close(port)
-    :ok
-  rescue
-    _ -> :ok
+  defp process_error(command, reason) do
+    %Error{
+      code: :process_start_failed,
+      exit_status: 69,
+      message: "Cannot start '#{command}': #{inspect(reason)}"
+    }
   end
 end

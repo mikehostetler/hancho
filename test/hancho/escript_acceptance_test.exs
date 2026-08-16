@@ -1,6 +1,8 @@
 defmodule Hancho.EscriptAcceptanceTest do
   use Hancho.RepositoryCase, async: false
 
+  @moduletag :acceptance
+
   setup_all do
     source_root = Path.expand("../..", __DIR__)
 

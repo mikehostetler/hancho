@@ -1,5 +1,7 @@
 defmodule Hancho.Factory.ControllerTest do
-  use Hancho.RepositoryCase, async: false
+  use Hancho.RepositoryCase, async: true
+
+  @moduletag :integration
 
   alias Hancho.Factory.{Client, Controller, Store}
   alias Hancho.{Repository, SQLite}
@@ -19,6 +21,8 @@ defmodule Hancho.Factory.ControllerTest do
 
   test "owns one lock and accepts authenticated control commands", context do
     assert {:ok, controller} = Controller.start_link(context.repository)
+
+    assert {:operating, %{state: :operating}} = :sys.get_state(controller)
 
     assert {:ok, %{"health" => "healthy", "state" => "operating"}} =
              Client.request(context.repository, "status")

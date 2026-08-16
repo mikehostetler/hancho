@@ -1,6 +1,7 @@
 defmodule Hancho.Config do
   @moduledoc "Loads and validates repository-local Hancho configuration."
 
+  alias Hancho.Config.Schema
   alias Hancho.{Error, JSON, Repository, TOML}
 
   @known_capabilities ~w(read edit_worktree review)
@@ -95,9 +96,8 @@ defmodule Hancho.Config do
   @spec validate(map()) :: :ok | {:error, Error.t()}
   def validate(config) do
     errors =
-      []
-      |> validate_schema(config)
-      |> validate_wip(config)
+      config
+      |> Schema.errors()
       |> validate_harnesses(config)
       |> validate_routes(config)
       |> validate_redaction(config)
@@ -133,24 +133,12 @@ defmodule Hancho.Config do
     end
   end
 
-  defp validate_schema(errors, %{"schema_version" => 1}), do: errors
-
-  defp validate_schema(errors, %{"schema_version" => version}),
-    do: ["unsupported schema_version #{inspect(version)}" | errors]
-
-  defp validate_schema(errors, _config), do: ["schema_version must be 1" | errors]
-
-  defp validate_wip(errors, %{"wip_limit" => value}) when is_integer(value) and value > 0,
-    do: errors
-
-  defp validate_wip(errors, _config), do: ["wip_limit must be a positive integer" | errors]
-
   defp validate_harnesses(errors, config) do
-    harnesses = Map.get(config, "harnesses", %{})
+    harnesses = map_value(config, "harnesses")
     default = Map.get(config, "default_harness")
 
     errors =
-      if is_map(harnesses) and map_size(harnesses) > 0 do
+      if map_size(harnesses) > 0 do
         errors
       else
         ["at least one harness is required" | errors]
@@ -198,8 +186,8 @@ defmodule Hancho.Config do
   end
 
   defp validate_routes(errors, config) do
-    routes = Map.get(config, "routes", %{})
-    harnesses = Map.get(config, "harnesses", %{})
+    routes = map_value(config, "routes")
+    harnesses = map_value(config, "harnesses")
 
     errors =
       routes
@@ -208,28 +196,36 @@ defmodule Hancho.Config do
       |> Enum.reduce(errors, fn workflow, acc -> ["unknown workflow route #{workflow}" | acc] end)
 
     Enum.reduce(routes, errors, fn {workflow, stations}, acc ->
-      Enum.reduce(stations, acc, fn {station, harness}, nested ->
-        required_capability = get_in(@station_capabilities, [workflow, station])
-        harness_config = harnesses[harness]
+      Enum.reduce(if(is_map(stations), do: stations, else: %{}), acc, fn
+        {station, harness}, nested ->
+          required_capability = get_in(@station_capabilities, [workflow, station])
+          harness_config = harnesses[harness]
 
-        cond do
-          is_nil(required_capability) ->
-            ["routes.#{workflow}.#{station} is an unknown station route" | nested]
+          cond do
+            is_nil(required_capability) ->
+              ["routes.#{workflow}.#{station} is an unknown station route" | nested]
 
-          is_nil(harness_config) ->
-            ["routes.#{workflow}.#{station} uses unknown harness #{harness}" | nested]
+            is_nil(harness_config) ->
+              ["routes.#{workflow}.#{station} uses unknown harness #{harness}" | nested]
 
-          required_capability not in (harness_config["capabilities"] || []) ->
-            [
-              "routes.#{workflow}.#{station} requires capability #{required_capability} from harness #{harness}"
-              | nested
-            ]
+            required_capability not in (harness_config["capabilities"] || []) ->
+              [
+                "routes.#{workflow}.#{station} requires capability #{required_capability} from harness #{harness}"
+                | nested
+              ]
 
-          true ->
-            nested
-        end
+            true ->
+              nested
+          end
       end)
     end)
+  end
+
+  defp map_value(config, key) do
+    case Map.get(config, key) do
+      value when is_map(value) -> value
+      _other -> %{}
+    end
   end
 
   defp validate_secrets(errors, config) do

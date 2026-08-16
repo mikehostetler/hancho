@@ -14,6 +14,7 @@ defmodule Hancho.Doctor do
       command_check("git", "git", true),
       command_check("sqlite", sqlite, true),
       erlang_check(otp_release),
+      process_manager_check(),
       runtime_check(repository),
       config_check(repository),
       workflow_check(),
@@ -72,6 +73,24 @@ defmodule Hancho.Doctor do
   end
 
   defp current_otp_release, do: :erlang.system_info(:otp_release) |> List.to_string()
+
+  defp process_manager_check do
+    if Process.whereis(:exec) && Process.whereis(Hancho.OSProcess.Supervisor) do
+      %{
+        name: "process_manager",
+        status: "pass",
+        required: true,
+        detail: "erlexec helper and OS process supervisor are active."
+      }
+    else
+      %{
+        name: "process_manager",
+        status: "fail",
+        required: true,
+        detail: "The erlexec helper or OS process supervisor is not active."
+      }
+    end
+  end
 
   defp config_check(repository) do
     case Config.load(repository) do

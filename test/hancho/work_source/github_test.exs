@@ -1,6 +1,8 @@
 defmodule Hancho.WorkSource.GitHubTest do
   use Hancho.RepositoryCase, async: false
 
+  @moduletag :integration
+
   alias Hancho.WorkSource.GitHub
   alias Hancho.{Config, Journal, Repository}
 

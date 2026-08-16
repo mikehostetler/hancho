@@ -1,6 +1,8 @@
 defmodule Hancho.ReliabilityTest do
   use Hancho.RepositoryCase, async: false
 
+  @moduletag :integration
+
   alias Hancho.Factory.{Client, Controller, Store}
   alias Hancho.{Repository, SQLite}
 
