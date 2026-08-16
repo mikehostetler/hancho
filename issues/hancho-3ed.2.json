@@ -3,7 +3,9 @@
   "blocked_by": [
     "hancho-3ed.1"
   ],
-  "blocks": [],
+  "blocks": [
+    "hancho-3ed.3"
+  ],
   "created": "2026-08-16T23:49:05Z",
   "description": "Add explicit help, version, command errors, stable exit codes, and one version source.",
   "id": "hancho-3ed.2",
