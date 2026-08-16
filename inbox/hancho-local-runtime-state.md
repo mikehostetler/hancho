@@ -40,6 +40,8 @@ Hancho-created execution worktrees do not create a second control folder. They u
 ├── config.toml
 ├── hancho.sqlite3
 ├── repository.json
+├── factory.json
+├── control.sock
 ├── harnesses/
 │   └── pi
 ├── runs/
@@ -55,7 +57,7 @@ Hancho-created execution worktrees do not create a second control folder. They u
 └── tmp/
 ```
 
-The configuration selects workflows, CLI harnesses, adapter executables, capabilities, and station routing. The database stores indexed operational facts. Files store large or stream-oriented artifacts. The database records each artifact path, content hash, size, creation time, and retention class.
+The configuration selects workflows, CLI harnesses, adapter executables, capabilities, and station routing. The database stores indexed operational facts. `factory.json` identifies the active process host. `control.sock` carries commands to a running factory. Files store large or stream-oriented artifacts. The database records each artifact path, content hash, size, creation time, and retention class.
 
 See [Hancho CLI harness adapters and routing](hancho-cli-harnesses.md) for the configuration concept.
 
@@ -131,7 +133,6 @@ These rules support `hancho status`, `hancho resume`, and `hancho reconcile` aft
 ## Open questions
 
 - Should `events.jsonl` duplicate database events for direct inspection, or should SQLite be the only event store?
-- Should `hancho init` update the tracked `.gitignore` or the local `.git/info/exclude` file?
 - How should a user share a useful local harness configuration without committing machine-specific details?
 - How should Hancho behave when it starts from a linked Git worktree?
 - Which artifacts can contain source code or sensitive application data?

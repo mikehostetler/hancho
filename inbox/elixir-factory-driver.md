@@ -79,7 +79,7 @@ Separate the system into these parts:
 - Flexible CLI harness adapters for Grok, Zclaude, Codex, Pi, and later tools. See [Hancho CLI harness adapters and routing](hancho-cli-harnesses.md).
 - A Beadwork execution adapter.
 - Git worktree, verification, review, and acceptance adapters.
-- A command-line interface for run, status, resume, stop, and reconcile operations.
+- A command-line interface for factory control and work-order transitions. See [Hancho CLI experience proposal](hancho-cli-experience.md).
 
 The transition engine receives the current state, an event, and a workflow definition. It returns the new state and requested actions. A separate action runner performs external effects.
 
