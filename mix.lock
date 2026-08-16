@@ -1,0 +1,8 @@
+%{
+  "erlexec": {:hex, :erlexec, "2.3.4", "91e8374e269d82cce0d5cbb47ebc8a4810d56474a767a5575ab22b40cf6ff5f9", [:rebar3], [], "hexpm", "ab0c6c3569a9f991fbfe6624961a88688610738589ff9dbad24db9bb27ae233b"},
+  "jason": {:hex, :jason, "1.4.5", "2e3a008590b0b8d7388c20293e9dcc9cf3e5d642fd2a114e4cbbb52e595d940a", [:mix], [{:decimal, "~> 1.0 or ~> 2.0 or ~> 3.0", [hex: :decimal, repo: "hexpm", optional: true]}], "hexpm", "b0c823996102bcd0239b3c2444eb00409b72f6a140c1950bc8b457d836b30684"},
+  "jido_harness": {:git, "https://github.com/agentjido/jido_harness.git", "8bf0d52f4fed0d8a9d2594000d8b3a775da16f8b", [ref: "8bf0d52f4fed0d8a9d2594000d8b3a775da16f8b"]},
+  "telemetry": {:hex, :telemetry, "1.4.2", "a0cb522801dffb1c49fe6e30561badffc7b6d0e180db1300df759faa22062855", [:rebar3], [], "hexpm", "928f6495066506077862c0d1646609eed891a4326bee3126ba54b60af61febb1"},
+  "toml_elixir": {:hex, :toml_elixir, "3.1.0", "7e3d8803f1e27e0585b13f57e68a37f4b7437c0cf8ad868abd56f10def144dc1", [:mix], [], "hexpm", "95e676725c6d411dd079bb34e2167b505600930280d6c7a51f6000ea669c2f69"},
+  "zoi": {:hex, :zoi, "0.18.7", "0d6b09d19fd1feff4340b7c5660bab04fbc80c1642ee1e5c75f06d527ac326db", [:mix], [{:decimal, "~> 2.0 or ~> 3.0", [hex: :decimal, repo: "hexpm", optional: true]}, {:phoenix_html, "~> 2.14.2 or ~> 3.0 or ~> 4.1", [hex: :phoenix_html, repo: "hexpm", optional: true]}], "hexpm", "5fedddd755dec84a5e78b3671070a5e595026aa3479f7fa566a42b8c4e4e5ff2"},
+}
