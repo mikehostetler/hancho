@@ -2,6 +2,7 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T12:35:49Z",
   "created": "2026-08-17T12:21:49Z",
   "description": "Add an explicit Beadwork-ready queue command that runs workflows serially in the foreground. Persist queue state in Bedrock, reconcile Git and Hancho worktree state at every boundary, stop on mismatch or child failure, and show verbose progress with matching audit log events.",
   "id": "hancho-z76",
@@ -13,7 +14,7 @@
     }
   ],
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Add deterministic foreground workflow queues",
   "type": "task",
   "updated_at": "2026-08-17T12:35:49Z"
