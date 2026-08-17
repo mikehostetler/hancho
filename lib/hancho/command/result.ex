@@ -8,7 +8,11 @@ defmodule Hancho.Command.Result do
             %{
               stdout: Zoi.string(),
               stderr: Zoi.string(),
-              exit_status: Zoi.integer() |> Zoi.min(0)
+              exit_status: Zoi.integer() |> Zoi.min(0),
+              stdout_bytes: Zoi.integer() |> Zoi.min(0) |> Zoi.default(0),
+              stderr_bytes: Zoi.integer() |> Zoi.min(0) |> Zoi.default(0),
+              stdout_truncated: Zoi.boolean() |> Zoi.default(false),
+              stderr_truncated: Zoi.boolean() |> Zoi.default(false)
             },
             coerce: true
           )

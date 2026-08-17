@@ -99,7 +99,7 @@ defmodule Hancho.Workflow.Runner do
       try do
         with :ok <- store_api.retry_run(store, run_id, position),
              :ok <-
-               Hancho.Log.write(log, "Workflow retry started",
+               Hancho.Audit.write(log, "Workflow retry started",
                  event: "workflow.retry_started",
                  metadata: %{step: Enum.at(definition.steps, position).name}
                ),
@@ -131,9 +131,7 @@ defmodule Hancho.Workflow.Runner do
         {:ok, :disabled}
 
       _other ->
-        with {:ok, config} <- Hancho.Config.load(project) do
-          Hancho.Log.open(project, config, metadata: %{run_id: run_id})
-        end
+        Hancho.Audit.open(project, metadata: %{run_id: run_id})
     end
   end
 
@@ -189,7 +187,7 @@ defmodule Hancho.Workflow.Runner do
     do: :crypto.hash(:sha256, contents) |> Base.encode16(case: :lower)
 
   defp log_workflow_source(log, definition, source) do
-    Hancho.Log.write(log, "Workflow snapshot",
+    Hancho.Audit.write(log, "Workflow snapshot",
       event: "workflow.snapshot",
       metadata: %{
         workflow: definition.name,

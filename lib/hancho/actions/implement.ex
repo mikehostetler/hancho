@@ -77,7 +77,7 @@ defmodule Hancho.Actions.Implement do
     fn progress ->
       with :ok <- persist_harness_run(context, progress) do
         _result =
-          Hancho.Log.write(context.log, "Implementation progress: #{progress.phase}",
+          Hancho.Audit.write(context.log, "Implementation progress: #{progress.phase}",
             event: "implement.progress",
             metadata: progress
           )

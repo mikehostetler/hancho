@@ -243,6 +243,21 @@ defmodule Hancho.LogTest do
     assert event["message"] == "still active"
   end
 
+  test "continues event sequence numbers after the writer reopens", context do
+    config = configure(context.config, console: false, sync_interval_ms: 0)
+
+    assert {:ok, first} = Log.open(context.project, config)
+    assert :ok = Log.write(first, "before restart")
+    assert :ok = Log.close(first)
+
+    assert {:ok, second} = Log.open(context.project, config)
+    assert :ok = Log.write(second, "after restart")
+    assert :ok = Log.close(second)
+
+    events = read_json_lines(Path.join(context.project.logs_path, "factory.jsonl"))
+    assert Enum.map(events, & &1["sequence"]) == [1, 2]
+  end
+
   defp configure(config, options) do
     logs =
       Enum.reduce(options, config.logs, fn {key, value}, logs -> Map.put(logs, key, value) end)

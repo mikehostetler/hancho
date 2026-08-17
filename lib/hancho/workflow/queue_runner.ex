@@ -662,28 +662,47 @@ defmodule Hancho.Workflow.QueueRunner do
 
   defp emit(project, queue_id, event, message, metadata, important, options) do
     progress = Keyword.get(options, :progress, fn _message -> :ok end)
-
-    with :ok <- maybe_progress(progress, message, important, options),
-         :ok <- write_audit(project, queue_id, event, message, metadata, options) do
-      :ok
-    end
+    _result = maybe_progress(progress, message, important, options)
+    _result = write_audit(project, queue_id, event, message, metadata, options)
+    :ok
   end
 
   defp maybe_progress(progress, message, important, options) do
-    if important or Keyword.get(options, :verbose, false), do: progress.(message), else: :ok
+    if important or Keyword.get(options, :verbose, false) do
+      try do
+        case progress.(message) do
+          :ok ->
+            :ok
+
+          other ->
+            Hancho.Log.internal(:warning, "Queue progress callback failed",
+              result: inspect(other)
+            )
+        end
+      rescue
+        error ->
+          Hancho.Log.internal(:warning, "Queue progress callback failed", error: inspect(error))
+      catch
+        kind, reason ->
+          Hancho.Log.internal(:warning, "Queue progress callback failed",
+            error: inspect({kind, reason})
+          )
+      end
+    else
+      :ok
+    end
   end
 
   defp write_audit(project, queue_id, event, message, metadata, options) do
     if Keyword.get(options, :log) == :disabled do
       :ok
     else
-      with {:ok, config} <- Hancho.Config.load(project),
-           config = %{config | logs: %{config.logs | console: false}},
-           {:ok, log} <- Hancho.Log.open(project, config, metadata: %{queue_id: queue_id}) do
+      with {:ok, log} <-
+             Hancho.Audit.open(project, console: false, metadata: %{queue_id: queue_id}) do
         try do
-          Hancho.Log.write(log, message, event: event, metadata: metadata)
+          Hancho.Audit.write(log, message, event: event, metadata: metadata)
         after
-          Hancho.Log.close(log)
+          Hancho.Audit.close(log)
         end
       end
     end

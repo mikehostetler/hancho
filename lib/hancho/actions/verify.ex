@@ -35,6 +35,7 @@ defmodule Hancho.Actions.Verify do
           command.run(executable, params.arguments,
             cwd: params.worktree_path,
             timeout: params.timeout_ms,
+            capture_limit: 20_000,
             stderr_to_stdout: true,
             on_output: sink
           )
@@ -102,7 +103,7 @@ defmodule Hancho.Actions.Verify do
   defp maybe_log_progress(_log, _output_path, _stream, nil), do: :ok
 
   defp maybe_log_progress(log, output_path, stream, progress) do
-    Hancho.Log.write(log, "Verification produced #{progress.bytes} bytes",
+    Hancho.Audit.write(log, "Verification produced #{progress.bytes} bytes",
       event: "verify.progress",
       metadata: %{
         bytes: progress.bytes,
@@ -117,49 +118,48 @@ defmodule Hancho.Actions.Verify do
     summary = summary(result.stdout)
     level = if result.exit_status == 0, do: :info, else: :error
 
-    with :ok <-
-           Hancho.Log.write(log, verification_message(result.exit_status, summary),
-             event: "verify.completed",
-             level: level,
-             metadata: %{
-               exit_status: result.exit_status,
-               summary: summary,
-               bytes: stats.bytes,
-               chunks: stats.chunks,
-               output_path: output_path
-             }
-           ) do
-      if result.exit_status == 0 do
-        {:ok,
-         %{
-           exit_status: 0,
-           output: tail(result.stdout, 20_000),
-           output_path: output_path,
-           bytes: stats.bytes,
-           chunks: stats.chunks,
-           summary: summary
-         }}
-      else
-        {:error,
-         "Verification failed with exit status #{result.exit_status}. Full output: #{output_path}\n#{tail(result.stdout, 20_000)}"}
-      end
+    Hancho.Audit.write(log, verification_message(result.exit_status, summary),
+      event: "verify.completed",
+      level: level,
+      metadata: %{
+        exit_status: result.exit_status,
+        summary: summary,
+        bytes: stats.bytes,
+        chunks: stats.chunks,
+        output_path: output_path
+      }
+    )
+
+    if result.exit_status == 0 do
+      {:ok,
+       %{
+         exit_status: 0,
+         output: tail(result.stdout, 20_000),
+         output_truncated: result.stdout_truncated,
+         output_path: output_path,
+         bytes: stats.bytes,
+         chunks: stats.chunks,
+         summary: summary
+       }}
+    else
+      {:error,
+       "Verification failed with exit status #{result.exit_status}. Full output: #{output_path}\n#{tail(result.stdout, 20_000)}"}
     end
   end
 
   defp finish({:error, reason}, output_path, stats, log) do
-    with :ok <-
-           Hancho.Log.write(log, "Verification command stopped",
-             event: "verify.stopped",
-             level: :error,
-             metadata: %{
-               error: reason,
-               bytes: stats.bytes,
-               chunks: stats.chunks,
-               output_path: output_path
-             }
-           ) do
-      {:error, reason}
-    end
+    Hancho.Audit.write(log, "Verification command stopped",
+      event: "verify.stopped",
+      level: :error,
+      metadata: %{
+        error: reason,
+        bytes: stats.bytes,
+        chunks: stats.chunks,
+        output_path: output_path
+      }
+    )
+
+    {:error, reason}
   end
 
   defp verification_message(0, nil), do: "Verification completed"

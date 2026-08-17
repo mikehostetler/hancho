@@ -108,7 +108,7 @@ defmodule Hancho.Actions.RenderPrompt do
   end
 
   defp audit(context, result) do
-    Hancho.Log.write(Map.get(context, :log, :disabled), "Prompt snapshot",
+    Hancho.Audit.write(Map.get(context, :log, :disabled), "Prompt snapshot",
       event: "prompt.snapshot",
       metadata: Map.put(result, :step, Map.get(context, :step))
     )

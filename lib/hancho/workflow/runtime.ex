@@ -156,7 +156,6 @@ defmodule Hancho.Workflow.Runtime do
   end
 
   defp audit(data, message, event, options) do
-    _result = Hancho.Log.write(data.log, message, Keyword.put(options, :event, event))
-    :ok
+    Hancho.Audit.write(data.log, message, Keyword.put(options, :event, event))
   end
 end

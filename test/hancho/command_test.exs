@@ -79,6 +79,26 @@ defmodule Hancho.CommandTest do
     refute eventually_alive?(child_pid)
   end
 
+  test "keeps a bounded output tail while streaming all bytes" do
+    parent = self()
+    output = String.duplicate("a", 20_000) <> "TAIL"
+
+    assert {:ok, result} =
+             Command.run("/bin/sh", ["-c", "printf '%s' '#{output}'"],
+               capture_limit: 16,
+               on_output: fn _stream, data ->
+                 send(parent, {:output_bytes, byte_size(data)})
+                 :ok
+               end
+             )
+
+    streamed = collect_output_bytes(0)
+    assert streamed == byte_size(output)
+    assert result.stdout == String.duplicate("a", 12) <> "TAIL"
+    assert result.stdout_bytes == byte_size(output)
+    assert result.stdout_truncated
+  end
+
   defp eventually_alive?(pid, attempts \\ 20)
 
   defp eventually_alive?(pid, 0), do: alive?(pid)
@@ -108,6 +128,14 @@ defmodule Hancho.CommandTest do
     else
       Process.sleep(25)
       eventually_exists?(path, attempts - 1)
+    end
+  end
+
+  defp collect_output_bytes(total) do
+    receive do
+      {:output_bytes, bytes} -> collect_output_bytes(total + bytes)
+    after
+      0 -> total
     end
   end
 

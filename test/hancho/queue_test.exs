@@ -382,6 +382,23 @@ defmodule Hancho.QueueTest do
     assert Enum.map(queue["items"], & &1["status"]) == ["completed", "stopped", "pending"]
   end
 
+  test "does not let a progress callback failure stop the queue" do
+    project = Hancho.Project.new(temporary_directory())
+
+    assert {:ok, result} =
+             QueueRunner.run(project, "implement", "beadwork-ready", 1,
+               beadwork: Beadwork,
+               reconciler: Reconciler,
+               workflow_runner: WorkflowRunner,
+               store_api: MemoryStore,
+               queue_id: "queue-progress-failure",
+               log: :disabled,
+               progress: fn _message -> raise "output closed" end
+             )
+
+    assert result.status == :completed
+  end
+
   test "resumes a stopped queue without repeating completed children" do
     project = Hancho.Project.new(temporary_directory())
 

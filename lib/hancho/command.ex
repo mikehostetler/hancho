@@ -9,6 +9,7 @@ defmodule Hancho.Command do
   alias Hancho.Command.Result
 
   @default_timeout 30_000
+  @default_capture_limit 1_048_576
   @shutdown_timeout 5_000
 
   @type output_stream :: :stdout | :stderr
@@ -16,6 +17,7 @@ defmodule Hancho.Command do
 
   @type option ::
           {:cwd, String.t()}
+          | {:capture_limit, pos_integer() | :infinity}
           | {:env, [{String.t(), String.t() | false}]}
           | {:input, iodata()}
           | {:on_output, output_callback()}
@@ -47,13 +49,26 @@ defmodule Hancho.Command do
     deadline = System.monotonic_time(:millisecond) + timeout
     input = Keyword.get(options, :input)
     on_output = Keyword.get(options, :on_output)
+    capture_limit = Keyword.get(options, :capture_limit, @default_capture_limit)
     caller_monitor = Process.monitor(caller)
 
-    with :ok <- Hancho.Command.Runtime.ensure_started(),
+    with :ok <- validate_capture_limit(capture_limit),
+         :ok <- Hancho.Command.Runtime.ensure_started(),
          {:ok, _pid, os_pid} <- start(executable, arguments, input, options, deadline) do
       case send_input(os_pid, input) do
-        :ok -> collect(os_pid, [], [], on_output, deadline, caller_monitor)
-        {:error, reason} -> stop_after_error(os_pid, reason)
+        :ok ->
+          collect(
+            os_pid,
+            capture(),
+            capture(),
+            capture_limit,
+            on_output,
+            deadline,
+            caller_monitor
+          )
+
+        {:error, reason} ->
+          stop_after_error(os_pid, reason)
       end
     end
   rescue
@@ -85,18 +100,48 @@ defmodule Hancho.Command do
     end
   end
 
-  defp collect(os_pid, stdout, stderr, on_output, deadline, caller_monitor) do
+  defp collect(
+         os_pid,
+         stdout,
+         stderr,
+         capture_limit,
+         on_output,
+         deadline,
+         caller_monitor
+       ) do
     receive do
       {:stdout, ^os_pid, data} ->
         case emit(on_output, :stdout, data) do
-          :ok -> collect(os_pid, [stdout, data], stderr, on_output, deadline, caller_monitor)
-          {:error, reason} -> stop_after_error(os_pid, {:output_callback_failed, reason})
+          :ok ->
+            collect(
+              os_pid,
+              capture(stdout, data, capture_limit),
+              stderr,
+              capture_limit,
+              on_output,
+              deadline,
+              caller_monitor
+            )
+
+          {:error, reason} ->
+            stop_after_error(os_pid, {:output_callback_failed, reason})
         end
 
       {:stderr, ^os_pid, data} ->
         case emit(on_output, :stderr, data) do
-          :ok -> collect(os_pid, stdout, [stderr, data], on_output, deadline, caller_monitor)
-          {:error, reason} -> stop_after_error(os_pid, {:output_callback_failed, reason})
+          :ok ->
+            collect(
+              os_pid,
+              stdout,
+              capture(stderr, data, capture_limit),
+              capture_limit,
+              on_output,
+              deadline,
+              caller_monitor
+            )
+
+          {:error, reason} ->
+            stop_after_error(os_pid, {:output_callback_failed, reason})
         end
 
       {:DOWN, ^caller_monitor, :process, _caller, reason} ->
@@ -140,11 +185,41 @@ defmodule Hancho.Command do
 
   defp result(stdout, stderr, exit_status) do
     Result.new(%{
-      stdout: IO.iodata_to_binary(stdout),
-      stderr: IO.iodata_to_binary(stderr),
-      exit_status: exit_status
+      stdout: stdout.data,
+      stderr: stderr.data,
+      exit_status: exit_status,
+      stdout_bytes: stdout.bytes,
+      stderr_bytes: stderr.bytes,
+      stdout_truncated: stdout.truncated,
+      stderr_truncated: stderr.truncated
     })
   end
+
+  defp capture, do: %{data: "", bytes: 0, truncated: false}
+
+  defp capture(capture, data, :infinity) do
+    %{capture | data: capture.data <> data, bytes: capture.bytes + byte_size(data)}
+  end
+
+  defp capture(capture, data, limit) do
+    combined = capture.data <> data
+    size = byte_size(combined)
+
+    retained =
+      if size <= limit,
+        do: combined,
+        else: binary_part(combined, size - limit, limit)
+
+    %{
+      data: retained,
+      bytes: capture.bytes + byte_size(data),
+      truncated: capture.truncated or size > limit
+    }
+  end
+
+  defp validate_capture_limit(:infinity), do: :ok
+  defp validate_capture_limit(limit) when is_integer(limit) and limit > 0, do: :ok
+  defp validate_capture_limit(value), do: {:error, {:invalid_capture_limit, value}}
 
   defp stop(os_pid) do
     _result = :exec.stop(os_pid)

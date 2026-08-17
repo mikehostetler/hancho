@@ -98,8 +98,9 @@ defmodule Hancho.Log do
       {:ok,
        %{
          path: path,
+         sequence_path: sequence_path(path),
          logs: logs,
-         sequence: 0,
+         sequence: read_sequence(path),
          base_metadata: base_metadata,
          console_filter?: not logs.console,
          previous_module_level: previous_module_level
@@ -114,13 +115,15 @@ defmodule Hancho.Log do
     metadata = Keyword.get(options, :metadata, %{})
 
     with {:ok, metadata} <- normalize_metadata(metadata),
+         sequence = state.sequence + 1,
          {:ok, event} <-
            Event.new(message,
-             sequence: state.sequence + 1,
+             sequence: sequence,
              level: Keyword.get(options, :level, :info),
              event: Keyword.get(options, :event, "activity.output"),
              metadata: Map.merge(state.base_metadata, metadata)
-           ) do
+           ),
+         :ok <- persist_sequence(state.sequence_path, sequence) do
       :ok =
         Logger.log(event.level, event.message,
           domain: [:hancho, :factory],
@@ -246,6 +249,41 @@ defmodule Hancho.Log do
 
   defp sync_interval(0), do: :no_repeat
   defp sync_interval(interval), do: interval
+
+  defp sequence_path(path), do: path <> ".sequence"
+
+  defp read_sequence(path) do
+    case File.read(sequence_path(path)) do
+      {:ok, contents} ->
+        case Integer.parse(String.trim(contents)) do
+          {value, ""} when value >= 0 -> value
+          _other -> sequence_from_log(path)
+        end
+
+      {:error, _reason} ->
+        sequence_from_log(path)
+    end
+  end
+
+  defp sequence_from_log(path) do
+    with {:ok, contents} <- File.read(path),
+         line when is_binary(line) <- contents |> String.split("\n", trim: true) |> List.last(),
+         {:ok, %{"sequence" => sequence}} when is_integer(sequence) <- Jason.decode(line) do
+      sequence
+    else
+      _other -> 0
+    end
+  end
+
+  defp persist_sequence(path, sequence) do
+    temporary = path <> ".tmp-" <> Integer.to_string(System.unique_integer([:positive]))
+
+    with :ok <- File.write(temporary, Integer.to_string(sequence), [:binary]),
+         :ok <- File.chmod(temporary, 0o600),
+         :ok <- File.rename(temporary, path) do
+      :ok
+    end
+  end
 
   defp normalize_metadata(metadata) when is_list(metadata) do
     if Keyword.keyword?(metadata) do
