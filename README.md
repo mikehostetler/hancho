@@ -77,11 +77,12 @@ This command stays in the foreground. The workflow does these steps in order:
 3. Create a detached worktree in `.hancho/worktrees/`.
 4. Render and save the agent prompt.
 5. Call the configured CLI coding agent through Jido.Harness.
-6. Run `mix test`.
-7. Create a conventional Git commit.
-8. Fast-forward the original branch to the commit.
-9. Remove the worktree.
-10. Close and sync the Beadwork task.
+6. Check changed paths against the Beadwork `Allowed Scope`, when configured.
+7. Run `mix test`.
+8. Create a conventional Git commit.
+9. Fast-forward the original branch to the commit.
+10. Remove the worktree.
+11. Close and sync the Beadwork task.
 
 The YAML file names each step, selects one approved `Jido.Action` module, and
 sets its parameters. References are explicit:

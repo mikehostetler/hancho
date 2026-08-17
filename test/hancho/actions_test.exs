@@ -177,6 +177,63 @@ defmodule Hancho.ActionsTest do
     assert result.output =~ "0 failures"
   end
 
+  test "validates changed paths against the Beadwork Allowed Scope" do
+    repository = temporary_repository()
+    File.mkdir_p!(Path.join(repository, "lib/hancho"))
+    File.write!(Path.join(repository, "lib/hancho/feature.ex"), "feature\n")
+    File.write!(Path.join(repository, "README.md"), "unexpected\n")
+
+    issue = %{
+      "description" => """
+      ## Allowed Scope
+
+      - `lib/hancho/`
+      - `test/hancho/scope_test.exs`
+
+      ## Verification
+
+      - `mix test`
+      """
+    }
+
+    assert {:error, error} =
+             Jido.Exec.run(
+               Actions.ValidateScope,
+               %{worktree_path: repository, issue: issue},
+               %{services: %{git: Hancho.Git}}
+             )
+
+    assert Exception.message(error) =~ "changes_outside_allowed_scope"
+    assert Exception.message(error) =~ "README.md"
+
+    File.rm!(Path.join(repository, "README.md"))
+
+    assert {:ok, result} =
+             Jido.Exec.run(
+               Actions.ValidateScope,
+               %{worktree_path: repository, issue: issue},
+               %{services: %{git: Hancho.Git}}
+             )
+
+    assert result.status == "checked"
+    assert result.changed_paths == ["lib/hancho/feature.ex"]
+  end
+
+  test "skips scope validation when a ticket has no Allowed Scope section" do
+    repository = temporary_repository()
+    File.write!(Path.join(repository, "feature.txt"), "feature\n")
+
+    assert {:ok, result} =
+             Jido.Exec.run(
+               Actions.ValidateScope,
+               %{worktree_path: repository, issue: %{"description" => "Create feature.txt"}},
+               %{services: %{git: Hancho.Git}}
+             )
+
+    assert result.status == "not_configured"
+    assert result.changed_paths == ["feature.txt"]
+  end
+
   test "creates, commits, lands, and removes a real detached worktree" do
     repository = temporary_repository()
     {:ok, baseline} = Hancho.Git.head(working_dir: repository)

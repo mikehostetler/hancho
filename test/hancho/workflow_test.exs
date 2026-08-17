@@ -70,7 +70,7 @@ defmodule Hancho.WorkflowTest do
 
     assert {:ok, definition} = Loader.load_path(path)
     assert definition.name == "implement"
-    assert length(definition.steps) == 10
+    assert length(definition.steps) == 11
     assert hd(definition.steps).name == "preflight"
     assert List.last(definition.steps).name == "close_issue"
 
@@ -209,7 +209,7 @@ defmodule Hancho.WorkflowTest do
              )
 
     assert result.status == :completed
-    assert map_size(result.outputs) == 10
+    assert map_size(result.outputs) == 11
     assert result.outputs["render_prompt"]["rendered"] =~ "Implement Beadwork task hancho-123"
     assert result.outputs["close_issue"]["status"] == "closed"
     assert File.read!(Path.join(repository, "implemented.txt")) == "implemented\n"

@@ -7,7 +7,10 @@ defmodule Hancho.Git do
   """
 
   @type option ::
-          {:binary, String.t()} | {:working_dir, String.t()} | {:timeout, pos_integer()}
+          {:binary, String.t()}
+          | {:working_dir, String.t()}
+          | {:timeout, pos_integer()}
+          | {:untracked_files, :no | :normal | :all}
 
   @spec executable() :: {:ok, String.t()} | {:error, :not_found}
   def executable do
@@ -35,9 +38,8 @@ defmodule Hancho.Git do
 
   @spec status([option()]) :: {:ok, Git.Status.t()} | {:error, term()}
   def status(options \\ []) do
-    options
-    |> config()
-    |> then(&Git.status(config: &1))
+    {status_options, config_options} = Keyword.split(options, [:untracked_files])
+    Git.status(Keyword.put(status_options, :config, config(config_options)))
   rescue
     error -> {:error, {:exception, error}}
   end

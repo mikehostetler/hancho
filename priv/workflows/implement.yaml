@@ -31,6 +31,11 @@ steps:
       worktree_path: "$steps.create_worktree.worktree_path"
       provider: codex
       timeout_ms: 1800000
+  - name: validate_scope
+    action: Hancho.Actions.ValidateScope
+    params:
+      worktree_path: "$steps.create_worktree.worktree_path"
+      issue: "$steps.claim.issue"
   - name: verify
     action: Hancho.Actions.Verify
     params:
