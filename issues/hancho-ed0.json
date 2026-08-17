@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T00:33:11Z",
+  "description": "Define and validate every Hancho data struct through Zoi while preserving public behavior and adding constructor validation tests.",
+  "id": "hancho-ed0",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Convert Hancho structs to Zoi",
+  "type": "task",
+  "updated_at": "2026-08-17T00:33:11Z"
+}
