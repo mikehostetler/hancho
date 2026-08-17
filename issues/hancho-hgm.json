@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T11:27:01Z",
+  "description": "Point Hancho at the verified mikehostetler/bedrock integration commit, remove the obsolete dependency patch, update Bedrock 0.5 configuration, and prove repository-local state survives a second escript process.",
+  "id": "hancho-hgm",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Adopt verified Bedrock integration stack",
+  "type": "task",
+  "updated_at": "2026-08-17T11:27:01Z"
+}
