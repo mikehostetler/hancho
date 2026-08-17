@@ -1,7 +1,7 @@
 defmodule Hancho.Workflow.Runner do
   @moduledoc "Runs one workflow in the foreground."
 
-  alias Hancho.Workflow.{Definition, Loader, RunReconciler, Runtime, Store}
+  alias Hancho.Workflow.{Compiler, Definition, Loader, RunReconciler, Runtime, Store}
 
   @spec run(Hancho.Project.t(), String.t(), map(), keyword()) ::
           {:ok, Hancho.Workflow.Result.t()} | {:error, term()}
@@ -16,8 +16,10 @@ defmodule Hancho.Workflow.Runner do
   defp do_run(project, workflow_name, input, options) do
     loader = Keyword.get(options, :loader, Loader)
     store_api = Keyword.get(options, :store_api, Store)
+    compiler = Keyword.get(options, :compiler, Compiler)
 
     with {:ok, definition, workflow_source} <- loader.load_with_source(project, workflow_name),
+         {:ok, _compiled} <- compiler.compile(project, definition, input, options),
          {:ok, store} <- store_api.open(project.bedrock_path) do
       result = run_with_store(project, definition, workflow_source, input, store, options)
 
@@ -82,11 +84,13 @@ defmodule Hancho.Workflow.Runner do
   defp retry_with_store(project, run_id, store, options) do
     store_api = Keyword.get(options, :store_api, Store)
     reconciler = Keyword.get(options, :reconciler, RunReconciler)
+    compiler = Keyword.get(options, :compiler, Compiler)
 
     with {:ok, run} <- store_api.fetch_run(store, run_id),
          :ok <- resumable_run(run),
          {:ok, definition} <- definition_from_snapshot(run),
          {:ok, input} <- Jason.decode(run["input_json"]),
+         {:ok, _compiled} <- compiler.compile(project, definition, input, options),
          {:ok, steps} <- store_api.list_steps(store, run_id),
          {:ok, position} <- resumable_position(steps),
          {:ok, outputs} <- completed_outputs(steps),

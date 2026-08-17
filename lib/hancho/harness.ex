@@ -17,6 +17,12 @@ defmodule Hancho.Harness do
     end
   end
 
+  def status(provider) do
+    with :ok <- ensure_started() do
+      Jido.Harness.status(provider)
+    end
+  end
+
   def run_with_progress(provider, prompt, options, callback) when is_function(callback, 1) do
     await_timeout = Keyword.get(options, :await_timeout, :infinity)
     interval = Keyword.get(options, :progress_interval_ms, @default_progress_interval_ms)

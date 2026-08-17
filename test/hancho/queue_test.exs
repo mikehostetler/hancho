@@ -90,12 +90,22 @@ defmodule Hancho.QueueTest do
           %{
             name: "implement",
             action: "Hancho.Actions.Implement",
-            params: %{"provider" => "grok", "timeout_ms" => 1_800_000}
+            params: %{
+              "prompt" => "Implement the selected task.",
+              "worktree_path" => "$input.repo_path",
+              "provider" => "grok",
+              "timeout_ms" => 1_800_000
+            }
           },
           %{
             name: "verify",
             action: "Hancho.Actions.Verify",
-            params: %{"timeout_ms" => 600_000}
+            params: %{
+              "worktree_path" => "$input.repo_path",
+              "executable" => "mix",
+              "arguments" => [],
+              "timeout_ms" => 600_000
+            }
           }
         ]
       })
@@ -309,7 +319,8 @@ defmodule Hancho.QueueTest do
              QueueRunner.preview(project, "implement", "beadwork-ready", 1,
                beadwork: ContainerReadyBeadwork,
                reconciler: Reconciler,
-               loader: PreviewLoader
+               loader: PreviewLoader,
+               validate_environment: false
              )
 
     assert preview.issues == [%{"id" => "task-next", "status" => "open"}]
@@ -327,6 +338,11 @@ defmodule Hancho.QueueTest do
              verification_timeout_ms: 600_000
            }
 
+    assert Enum.map(preview.compilation.steps, & &1.action) == [
+             "Hancho.Actions.Implement",
+             "Hancho.Actions.Verify"
+           ]
+
     refute File.exists?(project.bedrock_path)
   end
 
@@ -337,7 +353,8 @@ defmodule Hancho.QueueTest do
              QueueRunner.preview(project, "implement", "beadwork-ready", 2,
                beadwork: InsufficientReadyBeadwork,
                reconciler: Reconciler,
-               loader: PreviewLoader
+               loader: PreviewLoader,
+               validate_environment: false
              )
 
     assert Enum.map(preview.issues, & &1["id"]) == ["task-1", "task-2"]

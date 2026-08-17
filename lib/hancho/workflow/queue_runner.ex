@@ -1,7 +1,7 @@
 defmodule Hancho.Workflow.QueueRunner do
   @moduledoc "Runs a durable workflow queue serially in the foreground."
 
-  alias Hancho.Workflow.{Loader, QueueReconciler, QueueResult, Runner, Store}
+  alias Hancho.Workflow.{Compiler, Loader, QueueReconciler, QueueResult, Runner, Store}
 
   @source "beadwork-ready"
 
@@ -74,11 +74,19 @@ defmodule Hancho.Workflow.QueueRunner do
     beadwork = Keyword.get(options, :beadwork, Hancho.Beadwork)
     reconciler = Keyword.get(options, :reconciler, QueueReconciler)
     loader = Keyword.get(options, :loader, Loader)
+    compiler = Keyword.get(options, :compiler, Compiler)
 
     with :ok <- validate_request(source, count),
          {:ok, issues} <- ready_issues(beadwork, project.root, count),
          {:ok, repository} <- reconciler.initial(project, reconcile_options(options)),
-         {:ok, definition} <- loader.load(project, workflow) do
+         {:ok, definition} <- loader.load(project, workflow),
+         {:ok, compilation} <-
+           compiler.compile(
+             project,
+             definition,
+             %{"repo_path" => project.root, "issue_id" => hd(issues)["id"]},
+             options
+           ) do
       {:ok,
        %{
          workflow: workflow,
@@ -90,7 +98,8 @@ defmodule Hancho.Workflow.QueueRunner do
            clean: true,
            worktrees: repository.worktrees
          },
-         settings: workflow_settings(definition)
+         settings: workflow_settings(definition),
+         compilation: compilation
        }}
     end
   end

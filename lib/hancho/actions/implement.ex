@@ -47,6 +47,9 @@ defmodule Hancho.Actions.Implement do
     end
   end
 
+  @spec provider(String.t()) :: {:ok, atom()} | {:error, String.t()}
+  def provider(name), do: fetch_provider(name)
+
   defp run_harness(harness, provider, params, prior_run_id, context) do
     repository = repository_from_worktree(params.worktree_path)
 
