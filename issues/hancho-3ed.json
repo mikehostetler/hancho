@@ -2,13 +2,14 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T00:05:32Z",
   "created": "2026-08-16T23:49:05Z",
   "description": "Create stable command, project, CLI, version, test, and configuration boundaries before workflow development.",
   "id": "hancho-3ed",
   "labels": [],
   "priority": 1,
-  "status": "open",
+  "status": "closed",
   "title": "Refactor core and add configuration",
   "type": "epic",
-  "updated_at": "2026-08-16T23:49:05Z"
+  "updated_at": "2026-08-17T00:05:32Z"
 }
