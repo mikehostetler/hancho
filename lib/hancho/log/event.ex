@@ -6,37 +6,37 @@ defmodule Hancho.Log.Event do
   @schema_version 1
   @levels [:debug, :info, :notice, :warning, :error, :critical, :alert, :emergency]
 
-  @enforce_keys [
-    :schema_version,
-    :sequence,
-    :timestamp,
-    :level,
-    :event,
-    :message,
-    :message_encoding,
-    :metadata
-  ]
-  defstruct [
-    :schema_version,
-    :sequence,
-    :timestamp,
-    :level,
-    :event,
-    :message,
-    :message_encoding,
-    :metadata
-  ]
+  @schema Zoi.struct(
+            __MODULE__,
+            %{
+              schema_version: Zoi.literal(@schema_version),
+              sequence: Zoi.integer() |> Zoi.min(0),
+              timestamp:
+                Zoi.string()
+                |> Zoi.refine(&__MODULE__.valid_timestamp?/1),
+              level: Zoi.enum(@levels),
+              event: Zoi.string() |> Zoi.min(1),
+              message: Zoi.string(),
+              message_encoding: Zoi.enum([:utf8, :base64]),
+              metadata: Zoi.map()
+            },
+            coerce: true
+          )
 
-  @type t :: %__MODULE__{
-          schema_version: pos_integer(),
-          sequence: non_neg_integer(),
-          timestamp: String.t(),
-          level: Logger.level(),
-          event: String.t(),
-          message: String.t(),
-          message_encoding: :utf8 | :base64,
-          metadata: map()
-        }
+  @type t :: unquote(Zoi.type_spec(@schema))
+  @enforce_keys Zoi.Struct.enforce_keys(@schema)
+  defstruct Zoi.Struct.struct_fields(@schema)
+
+  @spec schema() :: Zoi.schema()
+  def schema, do: @schema
+
+  @doc false
+  def valid_timestamp?(timestamp) do
+    case DateTime.from_iso8601(timestamp) do
+      {:ok, _datetime, _offset} -> :ok
+      {:error, _reason} -> {:error, "must be an ISO 8601 timestamp"}
+    end
+  end
 
   @spec new(iodata(), keyword()) :: {:ok, t()} | {:error, term()}
   def new(message, options \\ []) do
@@ -47,22 +47,23 @@ defmodule Hancho.Log.Event do
     metadata = Keyword.get(options, :metadata, %{})
 
     with {:ok, message, encoding} <- normalize_message(message),
-         :ok <- validate_level(level),
-         :ok <- validate_event(event),
-         :ok <- validate_sequence(sequence),
          {:ok, timestamp} <- normalize_timestamp(timestamp),
          {:ok, metadata} <- normalize_metadata(metadata) do
-      {:ok,
-       %__MODULE__{
-         schema_version: @schema_version,
-         sequence: sequence,
-         timestamp: timestamp,
-         level: level,
-         event: event,
-         message: message,
-         message_encoding: encoding,
-         metadata: metadata
-       }}
+      attributes = %{
+        schema_version: @schema_version,
+        sequence: sequence,
+        timestamp: timestamp,
+        level: level,
+        event: event,
+        message: message,
+        message_encoding: encoding,
+        metadata: metadata
+      }
+
+      case Zoi.parse(@schema, attributes) do
+        {:ok, event} -> {:ok, event}
+        {:error, errors} -> {:error, field_error(attributes, errors)}
+      end
     end
   rescue
     error -> {:error, {:invalid_message, error}}
@@ -120,15 +121,6 @@ defmodule Hancho.Log.Event do
     end
   end
 
-  defp validate_level(level) when level in @levels, do: :ok
-  defp validate_level(level), do: {:error, {:invalid_level, level}}
-
-  defp validate_event(event) when is_binary(event) and byte_size(event) > 0, do: :ok
-  defp validate_event(event), do: {:error, {:invalid_event, event}}
-
-  defp validate_sequence(sequence) when is_integer(sequence) and sequence >= 0, do: :ok
-  defp validate_sequence(sequence), do: {:error, {:invalid_sequence, sequence}}
-
   defp normalize_timestamp(%DateTime{} = timestamp),
     do: {:ok, DateTime.to_iso8601(timestamp)}
 
@@ -151,6 +143,22 @@ defmodule Hancho.Log.Event do
 
   defp normalize_metadata(metadata) when is_map(metadata), do: {:ok, normalize(metadata)}
   defp normalize_metadata(metadata), do: {:error, {:invalid_metadata, metadata}}
+
+  defp field_error(attributes, errors) do
+    cond do
+      attributes.level not in @levels ->
+        {:invalid_level, attributes.level}
+
+      not (is_binary(attributes.event) and byte_size(attributes.event) > 0) ->
+        {:invalid_event, attributes.event}
+
+      not (is_integer(attributes.sequence) and attributes.sequence >= 0) ->
+        {:invalid_sequence, attributes.sequence}
+
+      true ->
+        {:invalid_event, errors}
+    end
+  end
 
   defp normalize_key(key) when is_binary(key), do: key
   defp normalize_key(key) when is_atom(key), do: Atom.to_string(key)

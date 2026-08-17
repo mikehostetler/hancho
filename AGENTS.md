@@ -14,6 +14,9 @@
   durable. Do not add another Logger file-backend package without a new need.
 - Use `toml_elixir` to read TOML configuration files.
 - Use `zoi` to validate configuration data.
+- Define every Hancho data struct from a `Zoi.struct/3` schema. Expose the
+  schema with `schema/0`, derive the type and fields from it, and parse data in
+  public constructors.
 - Read repository configuration through `Hancho.Config` and use dot-delimited keys.
 - Use the OTP `:gen_statem` behavior for workflow state management.
 - Use `erlexec` for operating-system process management.

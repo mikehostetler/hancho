@@ -116,12 +116,11 @@ defmodule Hancho.Command do
   end
 
   defp result(stdout, stderr, exit_status) do
-    {:ok,
-     %Result{
-       stdout: IO.iodata_to_binary(stdout),
-       stderr: IO.iodata_to_binary(stderr),
-       exit_status: exit_status
-     }}
+    Result.new(%{
+      stdout: IO.iodata_to_binary(stdout),
+      stderr: IO.iodata_to_binary(stderr),
+      exit_status: exit_status
+    })
   end
 
   defp stop(os_pid) do

@@ -15,14 +15,32 @@ defmodule Hancho.Config do
 
   @current_version 1
 
-  @enforce_keys [:version, :repo, :logs]
-  defstruct [:version, :repo, :logs]
+  @schema Zoi.struct(
+            __MODULE__,
+            %{
+              version: Zoi.literal(@current_version),
+              repo: Repo.schema(),
+              logs: Logs.schema()
+            },
+            coerce: true
+          )
 
-  @type t :: %__MODULE__{version: pos_integer(), repo: Repo.t(), logs: Logs.t()}
+  @type t :: unquote(Zoi.type_spec(@schema))
   @type key :: String.t()
+
+  @enforce_keys Zoi.Struct.enforce_keys(@schema)
+  defstruct Zoi.Struct.struct_fields(@schema)
+
+  @spec schema() :: Zoi.schema()
+  def schema, do: @schema
 
   @spec current_version() :: pos_integer()
   def current_version, do: @current_version
+
+  @spec new(map() | keyword() | t()) :: {:ok, t()} | {:error, [Zoi.Error.t()]}
+  def new(%__MODULE__{} = config), do: Zoi.parse(@schema, config)
+  def new(attributes) when is_list(attributes), do: new(Map.new(attributes))
+  def new(attributes) when is_map(attributes), do: Zoi.parse(@schema, attributes)
 
   @spec load(Project.t() | keyword()) :: {:ok, t()} | {:error, Error.t() | term()}
   def load(project_or_options \\ [])
@@ -70,8 +88,10 @@ defmodule Hancho.Config do
 
   @spec validate(map(), Project.t()) :: {:ok, t()} | {:error, Error.t()}
   def validate(values, %Project{} = project) when is_map(values) do
-    case Zoi.parse(schema(project), values) do
-      {:ok, values} -> {:ok, build(values, project)}
+    with {:ok, values} <- Zoi.parse(input_schema(project), values),
+         {:ok, config} <- build(values, project) do
+      {:ok, config}
+    else
       {:error, errors} -> {:error, validation_error(project.config_path, errors)}
     end
   end
@@ -84,17 +104,7 @@ defmodule Hancho.Config do
     %{
       "version" => config.version,
       "repo" => %{"path" => config.repo.path},
-      "logs" => %{
-        "enabled" => config.logs.enabled,
-        "path" => config.logs.path,
-        "format" => Atom.to_string(config.logs.format),
-        "console" => config.logs.console,
-        "include_internal" => config.logs.include_internal,
-        "sync_interval_ms" => config.logs.sync_interval_ms,
-        "max_bytes" => config.logs.max_bytes,
-        "max_files" => config.logs.max_files,
-        "compress" => config.logs.compress
-      }
+      "logs" => Logs.to_input(config.logs)
     }
   end
 
@@ -125,7 +135,7 @@ defmodule Hancho.Config do
     end
   end
 
-  defp schema(project) do
+  defp input_schema(project) do
     repo =
       Zoi.map(
         %{
@@ -135,91 +145,22 @@ defmodule Hancho.Config do
       )
       |> Zoi.default(%{"path" => project.root})
 
-    logs = logs_schema()
-
     Zoi.map(
       %{
         "version" => Zoi.literal(@current_version) |> Zoi.default(@current_version),
         "repo" => repo,
-        "logs" => logs
+        "logs" => Logs.input_schema()
       },
       unrecognized_keys: :error
     )
   end
 
   defp build(values, project) do
-    %__MODULE__{
-      version: values["version"],
-      repo: %Repo{path: Path.expand(values["repo"]["path"], project.root)},
-      logs: build_logs(values["logs"])
-    }
+    with {:ok, repo} <- Repo.new(path: Path.expand(values["repo"]["path"], project.root)),
+         {:ok, logs} <- Logs.from_input(values["logs"]) do
+      new(version: values["version"], repo: repo, logs: logs)
+    end
   end
-
-  defp logs_schema do
-    defaults = %{
-      "enabled" => true,
-      "path" => "factory.jsonl",
-      "format" => "jsonl",
-      "console" => true,
-      "include_internal" => false,
-      "sync_interval_ms" => 1_000,
-      "max_bytes" => 10_485_760,
-      "max_files" => 5,
-      "compress" => true
-    }
-
-    Zoi.map(
-      %{
-        "enabled" => Zoi.boolean() |> Zoi.default(defaults["enabled"]),
-        "path" => safe_log_path_schema(defaults["path"]),
-        "format" => Zoi.enum(["jsonl", "text"]) |> Zoi.default(defaults["format"]),
-        "console" => Zoi.boolean() |> Zoi.default(defaults["console"]),
-        "include_internal" => Zoi.boolean() |> Zoi.default(defaults["include_internal"]),
-        "sync_interval_ms" =>
-          Zoi.integer() |> Zoi.min(0) |> Zoi.default(defaults["sync_interval_ms"]),
-        "max_bytes" => Zoi.integer() |> Zoi.positive() |> Zoi.default(defaults["max_bytes"]),
-        "max_files" => Zoi.integer() |> Zoi.min(0) |> Zoi.default(defaults["max_files"]),
-        "compress" => Zoi.boolean() |> Zoi.default(defaults["compress"])
-      },
-      unrecognized_keys: :error
-    )
-    |> Zoi.default(defaults)
-  end
-
-  defp safe_log_path_schema(default) do
-    Zoi.string()
-    |> Zoi.min(1)
-    |> Zoi.refine(fn path ->
-      case Path.safe_relative(path, ".") do
-        {:ok, relative} when relative in ["", "."] ->
-          {:error, "must name a file inside .hancho/logs"}
-
-        {:ok, _relative} ->
-          :ok
-
-        :error ->
-          {:error, "must be relative to .hancho/logs"}
-      end
-    end)
-    |> Zoi.default(default)
-  end
-
-  defp build_logs(values) do
-    %Logs{
-      enabled: values["enabled"],
-      path: values["path"],
-      format: log_format(values["format"]),
-      console: values["console"],
-      include_internal: values["include_internal"],
-      sync_interval_ms: values["sync_interval_ms"],
-      max_bytes: values["max_bytes"],
-      max_files: values["max_files"],
-      compress: values["compress"]
-    }
-  end
-
-  defp log_format("jsonl"), do: :jsonl
-  defp log_format("text"), do: :text
 
   defp fetch_segments(value, []), do: {:ok, value}
 
@@ -237,21 +178,21 @@ defmodule Hancho.Config do
   defp fetch_segments(_value, _segments), do: :error
 
   defp read_error(path, reason) do
-    %Error{
+    Error.new!(%{
       kind: :read,
       path: path,
       message: "Cannot read Hancho configuration at #{path}: #{:file.format_error(reason)}",
       details: reason
-    }
+    })
   end
 
   defp decode_error(path, reason) do
-    %Error{
+    Error.new!(%{
       kind: :decode,
       path: path,
       message: "Cannot decode Hancho configuration at #{path}: #{Exception.message(reason)}",
       details: reason
-    }
+    })
   end
 
   defp validation_error(path, errors) do
@@ -261,11 +202,11 @@ defmodule Hancho.Config do
         if key == "", do: error.message, else: "#{key}: #{error.message}"
       end)
 
-    %Error{
+    Error.new!(%{
       kind: :validation,
       path: path,
       message: "Invalid Hancho configuration at #{path}: #{details}",
       details: errors
-    }
+    })
   end
 end

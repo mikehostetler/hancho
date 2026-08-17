@@ -3,29 +3,37 @@ defmodule Hancho.Project do
   Repository paths used by one Hancho software factory.
   """
 
-  @enforce_keys [:root, :hancho_dir, :config_path, :logs_path, :state_path]
-  defstruct [:root, :hancho_dir, :config_path, :logs_path, :state_path]
+  @schema Zoi.struct(
+            __MODULE__,
+            %{
+              root: Zoi.string() |> Zoi.min(1),
+              hancho_dir: Zoi.string() |> Zoi.min(1),
+              config_path: Zoi.string() |> Zoi.min(1),
+              logs_path: Zoi.string() |> Zoi.min(1),
+              state_path: Zoi.string() |> Zoi.min(1)
+            },
+            coerce: true
+          )
 
-  @type t :: %__MODULE__{
-          root: String.t(),
-          hancho_dir: String.t(),
-          config_path: String.t(),
-          logs_path: String.t(),
-          state_path: String.t()
-        }
+  @type t :: unquote(Zoi.type_spec(@schema))
+  @enforce_keys Zoi.Struct.enforce_keys(@schema)
+  defstruct Zoi.Struct.struct_fields(@schema)
+
+  @spec schema() :: Zoi.schema()
+  def schema, do: @schema
 
   @spec new(String.t()) :: t()
   def new(root) do
     root = Path.expand(root)
     hancho_dir = Path.join(root, ".hancho")
 
-    %__MODULE__{
+    Zoi.parse!(@schema, %{
       root: root,
       hancho_dir: hancho_dir,
       config_path: Path.join(hancho_dir, "config.toml"),
       logs_path: Path.join(hancho_dir, "logs"),
       state_path: Path.join(hancho_dir, "state")
-    }
+    })
   end
 
   @spec log_path(t(), String.t()) :: {:ok, String.t()} | {:error, :unsafe_path}
