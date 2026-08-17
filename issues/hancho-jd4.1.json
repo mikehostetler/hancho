@@ -4,14 +4,15 @@
   "blocks": [
     "hancho-jd4.2"
   ],
+  "closed_at": "2026-08-17T00:12:47Z",
   "created": "2026-08-17T00:09:34Z",
   "description": "Add validated logging options, safe local paths, a stable normalized event model, and dot-delimited configuration values.",
   "id": "hancho-jd4.1",
   "labels": [],
   "parent": "hancho-jd4",
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Add logging configuration and event schema",
   "type": "task",
-  "updated_at": "2026-08-17T00:09:41Z"
+  "updated_at": "2026-08-17T00:12:47Z"
 }
