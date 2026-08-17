@@ -9,6 +9,10 @@ defmodule Hancho.CLI do
     hancho doctor     Inspect the repository and local tools
     hancho run WORKFLOW ISSUE_ID
                       Run one Beadwork workflow in the foreground
+    hancho retry RUN_ID [--verbose]
+                      Continue one stopped workflow from its failed step
+    hancho resume QUEUE_ID [--verbose]
+                      Continue one stopped queue from its failed child
     hancho queue WORKFLOW --source beadwork-ready --count N [--dry-run] [--verbose]
                       Run ready Beadwork tasks serially in the foreground
     hancho --version  Print the Hancho version
@@ -87,6 +91,47 @@ defmodule Hancho.CLI do
              options
            ) do
       print_workflow_result(result)
+    else
+      {:error, reason} ->
+        IO.puts(:stderr, "ERROR: #{format_error(reason)}")
+        1
+    end
+  end
+
+  defp dispatch_command(["retry", run_id], parsed, options)
+       when parsed == [] or parsed == [verbose: true] do
+    project_api = Keyword.get(options, :project_api, Hancho.Project)
+    runner = Keyword.get(options, :workflow_runner, Hancho.Workflow.Runner)
+    cwd = Keyword.get(options, :cwd, File.cwd!())
+    retry_options = Keyword.put(options, :verbose, parsed[:verbose] || false)
+
+    with {:ok, project} <- project_api.discover(cwd: cwd),
+         {:ok, result} <- runner.retry(project, run_id, retry_options) do
+      print_workflow_result(result)
+    else
+      {:error, reason} ->
+        IO.puts(:stderr, "ERROR: #{format_error(reason)}")
+        1
+    end
+  end
+
+  defp dispatch_command(["resume", queue_id], parsed, options)
+       when parsed == [] or parsed == [verbose: true] do
+    project_api = Keyword.get(options, :project_api, Hancho.Project)
+    runner = Keyword.get(options, :queue_runner, Hancho.Workflow.QueueRunner)
+    cwd = Keyword.get(options, :cwd, File.cwd!())
+
+    resume_options =
+      options
+      |> Keyword.put(:verbose, parsed[:verbose] || false)
+      |> Keyword.put(:progress, fn message ->
+        IO.puts(message)
+        :ok
+      end)
+
+    with {:ok, project} <- project_api.discover(cwd: cwd),
+         {:ok, result} <- runner.resume(project, queue_id, resume_options) do
+      print_queue_result(result)
     else
       {:error, reason} ->
         IO.puts(:stderr, "ERROR: #{format_error(reason)}")

@@ -189,6 +189,30 @@ match the child workflow state. A mismatch stops the queue with a
 `filesystem_out_of_sync` error. Hancho does not delete worktrees, prune Git
 state, reset HEAD, or change branches to repair a mismatch.
 
+## Retry and resume
+
+Continue one stopped workflow from its stopped step:
+
+```sh
+./hancho retry RUN_ID --verbose
+```
+
+Hancho keeps completed step outputs and does not run completed steps again. It
+checks the saved main-branch commit and a retained worktree before it changes
+durable state. A mismatch stops the retry.
+
+Continue one stopped queue from its stopped child:
+
+```sh
+./hancho resume QUEUE_ID --verbose
+```
+
+Hancho retries the stopped child with its original run ID. After that child
+completes, Hancho runs the pending children in their saved order. Completed
+children do not run again. Queue activity includes `queue.resumed` and
+`queue.item_retried` events. Workflow activity includes a
+`workflow.retry_started` event.
+
 ## Factory activity logs
 
 Hancho writes factory activity to `.hancho/logs/factory.jsonl` by default. These events contain command output, workflow changes, agent activity, and other factory work. They are separate from the normal diagnostic logs for the Hancho application.

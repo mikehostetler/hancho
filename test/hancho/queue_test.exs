@@ -1,7 +1,7 @@
 defmodule Hancho.QueueTest do
   use ExUnit.Case, async: false
 
-  alias Hancho.Workflow.{QueueReconciler, QueueRunner, Result, Store}
+  alias Hancho.Workflow.{QueueReconciler, QueueRunner, Result, RunReconciler, Store}
 
   defmodule Beadwork do
     def ready(_options) do
@@ -151,6 +151,24 @@ defmodule Hancho.QueueTest do
       do: WorkflowRunner.run(project, workflow, input, options)
   end
 
+  defmodule RetryWorkflowRunner do
+    def retry(_project, "queue-stop-002", options) do
+      send(self(), {:retried, "task-2", options[:run_id]})
+
+      Result.new(%{
+        run_id: options[:run_id],
+        workflow: "implement",
+        status: :completed,
+        current_step: nil,
+        outputs: %{"land" => %{"commit" => "head-task-2"}},
+        error: nil
+      })
+    end
+
+    def run(project, workflow, input, options),
+      do: WorkflowRunner.run(project, workflow, input, options)
+  end
+
   defmodule MemoryStore do
     def open(_path), do: {:ok, :memory}
     def close(_store), do: :ok
@@ -220,6 +238,18 @@ defmodule Hancho.QueueTest do
         |> put_item(position, item)
         |> Map.put("status", "stopped")
         |> Map.put("error", error)
+      end)
+    end
+
+    def resume_queue(_store, id) do
+      update(id, fn queue ->
+        position = queue["current_position"]
+        item = Enum.at(queue["items"], position) |> Map.put("status", "running")
+
+        queue
+        |> put_item(position, item)
+        |> Map.put("status", "running")
+        |> Map.put("error", nil)
       end)
     end
 
@@ -335,6 +365,41 @@ defmodule Hancho.QueueTest do
     assert Enum.map(queue["items"], & &1["status"]) == ["completed", "stopped", "pending"]
   end
 
+  test "resumes a stopped queue without repeating completed children" do
+    project = Hancho.Project.new(temporary_directory())
+
+    assert {:ok, stopped} =
+             QueueRunner.run(project, "implement", "beadwork-ready", 3,
+               beadwork: Beadwork,
+               reconciler: Reconciler,
+               workflow_runner: StoppingWorkflowRunner,
+               store_api: MemoryStore,
+               queue_id: "queue-stop",
+               log: :disabled
+             )
+
+    assert stopped.status == :stopped
+    assert_received {:ran, "task-1", "queue-stop-001"}
+    assert_received {:ran, "task-2", "queue-stop-002"}
+
+    assert {:ok, resumed} =
+             QueueRunner.resume(project, "queue-stop",
+               reconciler: Reconciler,
+               workflow_runner: RetryWorkflowRunner,
+               store_api: MemoryStore,
+               log: :disabled
+             )
+
+    assert resumed.status == :completed
+    assert resumed.completed_count == 3
+    assert_received {:retried, "task-2", "queue-stop-002"}
+    assert_received {:ran, "task-3", "queue-stop-003"}
+    refute_received {:ran, "task-1", _run_id}
+
+    assert {:ok, queue} = MemoryStore.fetch_queue(:memory, "queue-stop")
+    assert Enum.map(queue["items"], & &1["status"]) == ["completed", "completed", "completed"]
+  end
+
   test "stops before a child when reconciliation fails" do
     project = Hancho.Project.new(temporary_directory())
 
@@ -379,6 +444,33 @@ defmodule Hancho.QueueTest do
     assert queue["expected_worktrees"] == []
     assert Enum.map(queue["items"], & &1["status"]) == ["completed"]
     Store.close(reopened)
+  end
+
+  test "persists a stopped queue resume in Bedrock" do
+    project = Hancho.Project.new(temporary_directory())
+    items = [%{position: 0, issue_id: "task-1", run_id: "queue-resume-001"}]
+    state = %{repository: project.root, branch: "main", head: "head-0"}
+
+    assert {:ok, store} = Store.open(project.bedrock_path)
+
+    assert :ok =
+             Store.create_queue(
+               store,
+               "queue-resume",
+               "implement",
+               "beadwork-ready",
+               items,
+               state
+             )
+
+    assert :ok = Store.start_queue_item(store, "queue-resume", 0)
+    assert :ok = Store.stop_queue_item(store, "queue-resume", 0, :agent_stopped)
+    assert :ok = Store.resume_queue(store, "queue-resume")
+    assert {:ok, queue} = Store.fetch_queue(store, "queue-resume")
+    assert queue["status"] == "running"
+    assert hd(queue["items"])["status"] == "running"
+    assert queue["error"] == nil
+    Store.close(store)
   end
 
   test "reconciles real Git and worktree state and reports exact mismatches" do
@@ -461,6 +553,28 @@ defmodule Hancho.QueueTest do
 
     assert {:error, %{code: "filesystem_out_of_sync", field: "worktree_directories"}} =
              QueueReconciler.after_run(project, queue, outputs)
+  end
+
+  test "validates saved main and retained-worktree state before retry" do
+    repository = temporary_repository()
+    project = Hancho.Project.new(repository)
+    File.mkdir_p!(project.worktrees_path)
+    {:ok, head} = Hancho.Git.head(working_dir: repository)
+    path = Path.join(project.worktrees_path, "run-retry")
+    assert {:ok, :done} = Hancho.Git.create_worktree(repository, path, head)
+    File.write!(Path.join(path, "feature.txt"), "retained work\n")
+
+    outputs = %{
+      "preflight" => %{"baseline" => head, "branch" => "main"},
+      "create_worktree" => %{"baseline" => head, "worktree_path" => path}
+    }
+
+    assert {:ok, %{head: ^head}} = RunReconciler.retry(project, outputs)
+
+    File.write!(Path.join(repository, "unexpected.txt"), "changed\n")
+
+    assert {:error, %{code: "filesystem_out_of_sync", field: "repository_status"}} =
+             RunReconciler.retry(project, outputs)
   end
 
   test "stops reconciliation when the main repository becomes dirty" do

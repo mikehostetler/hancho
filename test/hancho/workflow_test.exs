@@ -57,6 +57,32 @@ defmodule Hancho.WorkflowTest do
     def run(:first, %{"value" => value}, _context), do: {:ok, %{other: value}}
   end
 
+  defmodule TransientExecutor do
+    def run(:first, %{"value" => value}, context) do
+      send(context.services.test_pid, :first_executed)
+      Process.put(__MODULE__, true)
+      {:ok, %{value: value + 1}}
+    end
+
+    def run(:second, %{"value" => value}, context) do
+      send(context.services.test_pid, :second_executed)
+
+      if Process.get(__MODULE__) do
+        Process.delete(__MODULE__)
+        {:error, :transient_failure}
+      else
+        {:ok, %{value: value * 2}}
+      end
+    end
+  end
+
+  defmodule RetryReconciler do
+    def retry(_project, outputs, _options) do
+      send(self(), {:retry_reconciled, outputs})
+      {:ok, %{clean: true}}
+    end
+  end
+
   test "loads the default ordered workflow and validates action references" do
     directory = temporary_directory()
     path = Path.join(directory, "implement.yaml")
@@ -188,6 +214,53 @@ defmodule Hancho.WorkflowTest do
 
     assert {:ok, steps} = Store.list_steps(store, "run-stopped")
     assert Enum.map(steps, & &1["status"]) == ["completed", "stopped"]
+    Store.close(store)
+  end
+
+  test "retries only the stopped step and preserves completed outputs" do
+    {project, _workflow_path} = project_with_workflow(successful_workflow())
+
+    assert {:ok, stopped} =
+             Runner.run(project, "test", %{"number" => 3},
+               run_id: "run-retry",
+               registry: Registry,
+               executor: TransientExecutor,
+               services: %{test_pid: self()},
+               log: :disabled,
+               flush_state: false
+             )
+
+    assert stopped.status == :stopped
+    assert stopped.current_step == "second"
+    assert_received :first_executed
+    assert_received :second_executed
+
+    assert {:ok, completed} =
+             Runner.retry(project, "run-retry",
+               registry: Registry,
+               executor: TransientExecutor,
+               services: %{test_pid: self()},
+               reconciler: RetryReconciler,
+               log: :disabled,
+               flush_state: false
+             )
+
+    assert completed.status == :completed
+
+    assert completed.outputs == %{
+             "first" => %{"value" => 4},
+             "second" => %{"value" => 8}
+           }
+
+    assert_received {:retry_reconciled, %{"first" => %{"value" => 4}}}
+    refute_received :first_executed
+    assert_received :second_executed
+
+    assert {:ok, store} = Store.open(project.bedrock_path)
+    assert {:ok, run} = Store.fetch_run(store, "run-retry")
+    assert run["status"] == "completed"
+    assert {:ok, steps} = Store.list_steps(store, "run-retry")
+    assert Enum.map(steps, & &1["status"]) == ["completed", "completed"]
     Store.close(store)
   end
 

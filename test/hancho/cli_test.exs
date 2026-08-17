@@ -20,6 +20,19 @@ defmodule Hancho.CLITest do
         error: nil
       })
     end
+
+    def retry(project, "run-stopped", options) do
+      send(self(), {:workflow_retry, project, options[:verbose]})
+
+      Hancho.Workflow.Result.new(%{
+        run_id: "run-stopped",
+        workflow: "implement",
+        status: :completed,
+        current_step: nil,
+        outputs: %{},
+        error: nil
+      })
+    end
   end
 
   defmodule QueueRunner do
@@ -54,6 +67,22 @@ defmodule Hancho.CLITest do
            verification_timeout_ms: 600_000
          }
        }}
+    end
+
+    def resume(project, "queue-stopped", options) do
+      send(self(), {:queue_resume, project, options[:verbose]})
+      options[:progress].("Queue queue-stopped resumed.")
+
+      Hancho.Workflow.QueueResult.new(%{
+        queue_id: "queue-stopped",
+        workflow: "implement",
+        status: :completed,
+        completed_count: 1,
+        total_count: 1,
+        current_issue: nil,
+        child_runs: ["queue-stopped-001"],
+        error: nil
+      })
     end
   end
 
@@ -108,6 +137,36 @@ defmodule Hancho.CLITest do
                      %{"repo_path" => "/repo", "issue_id" => "hancho-123"}}
 
     assert project.bedrock_path == "/repo/.hancho/bedrock"
+  end
+
+  test "retries a stopped workflow" do
+    output =
+      capture_io(fn ->
+        assert Hancho.CLI.run(["retry", "run-stopped", "--verbose"],
+                 cwd: "/repo",
+                 project_api: ProjectAPI,
+                 workflow_runner: WorkflowRunner
+               ) == 0
+      end)
+
+    assert output == "Workflow implement completed. Run: run-stopped\n"
+    assert_received {:workflow_retry, project, true}
+    assert project.root == "/repo"
+  end
+
+  test "resumes a stopped queue" do
+    output =
+      capture_io(fn ->
+        assert Hancho.CLI.run(["resume", "queue-stopped", "--verbose"],
+                 cwd: "/repo",
+                 project_api: ProjectAPI,
+                 queue_runner: QueueRunner
+               ) == 0
+      end)
+
+    assert output == "Queue queue-stopped resumed.\n"
+    assert_received {:queue_resume, project, true}
+    assert project.root == "/repo"
   end
 
   test "runs an explicit foreground queue with verbose progress" do

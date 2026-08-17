@@ -55,25 +55,61 @@ defmodule Hancho.Workflow.Store do
     update_run(store, run_id, fn run ->
       key = step_key(run_id, position)
 
-      if Repo.get(key) do
-        Repo.rollback({:step_already_exists, position})
-      else
-        Repo.put(
-          key,
-          encode!(%{
-            "position" => position,
-            "name" => step.name,
-            "action" => step.action,
-            "status" => "running",
-            "params_json" => encode!(params),
-            "result_json" => nil,
-            "started_at" => now(),
-            "finished_at" => nil,
-            "error_json" => nil
-          })
-        )
+      stored_step = %{
+        "position" => position,
+        "name" => step.name,
+        "action" => step.action,
+        "status" => "running",
+        "params_json" => encode!(params),
+        "result_json" => nil,
+        "started_at" => now(),
+        "finished_at" => nil,
+        "error_json" => nil
+      }
 
-        Map.put(run, "current_step", step.name)
+      case Repo.get(key) do
+        nil ->
+          Repo.put(key, encode!(stored_step))
+          Map.put(run, "current_step", step.name)
+
+        encoded ->
+          case decode(encoded) do
+            {:ok, %{"status" => "retry_pending"}} ->
+              Repo.put(key, encode!(stored_step))
+              Map.put(run, "current_step", step.name)
+
+            _other ->
+              Repo.rollback({:step_already_exists, position})
+          end
+      end
+    end)
+  end
+
+  @spec retry_run(String.t(), String.t(), non_neg_integer()) :: :ok | {:error, term()}
+  def retry_run(store, run_id, position) do
+    transact(store, fn ->
+      run_key = run_key(run_id)
+      step_key = step_key(run_id, position)
+
+      with {:ok, %{"status" => "stopped"} = run} <- get(run_key),
+           {:ok, %{"status" => "stopped"} = step} <- get(step_key) do
+        retried_run =
+          run
+          |> Map.put("status", "running")
+          |> Map.put("finished_at", nil)
+          |> Map.put("error_json", nil)
+
+        retried_step =
+          step
+          |> Map.put("status", "retry_pending")
+          |> Map.put("finished_at", nil)
+          |> Map.put("error_json", nil)
+
+        Repo.put(run_key, encode!(retried_run))
+        Repo.put(step_key, encode!(retried_step))
+      else
+        {:ok, _state} -> Repo.rollback(:run_not_stopped)
+        {:error, reason} -> Repo.rollback(reason)
       end
     end)
   end
@@ -251,6 +287,33 @@ defmodule Hancho.Workflow.Store do
         Repo.put(queue_key(queue_id), encode!(queue))
         Repo.clear(@active_queue_key)
       else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @spec resume_queue(String.t(), String.t()) :: :ok | {:error, term()}
+  def resume_queue(store, queue_id) do
+    transact(store, fn ->
+      with nil <- Repo.get(@active_queue_key),
+           {:ok, %{"status" => "stopped"} = queue} <- get(queue_key(queue_id)),
+           position = queue["current_position"],
+           {:ok, %{"status" => "stopped"} = item} <- queue_item(queue, position) do
+        resumed_item = item |> Map.put("status", "running") |> Map.put("error", nil)
+
+        resumed_queue =
+          queue
+          |> put_queue_item(position, resumed_item)
+          |> Map.put("status", "running")
+          |> Map.put("current_run_id", item["run_id"])
+          |> Map.put("finished_at", nil)
+          |> Map.put("error", nil)
+
+        Repo.put(queue_key(queue_id), encode!(resumed_queue))
+        Repo.put(@active_queue_key, queue_id)
+      else
+        encoded when is_binary(encoded) -> Repo.rollback(:queue_already_running)
+        {:ok, _state} -> Repo.rollback(:queue_not_stopped)
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
