@@ -102,6 +102,17 @@ defmodule Hancho.HarnessIntegrationTest do
     assert {:ok, store} = Store.open(project.bedrock_path)
     assert {:ok, run} = Store.fetch_run(store, "full-harness-integration")
     assert run["status"] == "completed"
+    assert {:ok, steps} = Store.list_steps(store, "full-harness-integration")
+    implement = Enum.find(steps, &(&1["name"] == "implement"))
+    operation = Jason.decode!(implement["operation_json"])
+    assert operation["kind"] == "jido_harness.run"
+    assert operation["id"] == harness_run_id
+
+    assert String.starts_with?(
+             Jido.Harness.Run.info(harness_run_id) |> elem(1) |> Map.fetch!(:journal_dir),
+             project.hancho_dir
+           )
+
     assert :ok = Store.close(store)
     assert :ok = Jido.Harness.Run.prune(harness_run_id)
   end

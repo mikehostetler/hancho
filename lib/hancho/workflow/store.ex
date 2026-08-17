@@ -69,6 +69,7 @@ defmodule Hancho.Workflow.Store do
           "action" => step.action,
           "status" => "running",
           "params_json" => encode!(params),
+          "operation_json" => nil,
           "result_json" => nil,
           "started_at" => now(),
           "finished_at" => nil,
@@ -82,8 +83,8 @@ defmodule Hancho.Workflow.Store do
 
           encoded ->
             case decode_record(encoded, StepRecord) do
-              {:ok, %{"status" => "retry_pending"}} ->
-                put_step(key, stored_step)
+              {:ok, %{"status" => "retry_pending"} = existing} ->
+                put_step(key, Map.put(stored_step, "operation_json", existing["operation_json"]))
                 Map.put(run, "current_step", step.name)
 
               _other ->
@@ -352,6 +353,42 @@ defmodule Hancho.Workflow.Store do
         end
       else
         Repo.rollback(:not_found)
+      end
+    end)
+  end
+
+  @spec record_step_operation(
+          String.t(),
+          String.t(),
+          non_neg_integer(),
+          String.t(),
+          String.t(),
+          map()
+        ) :: :ok | {:error, term()}
+  def record_step_operation(store, run_id, position, kind, id, metadata) do
+    update_run_and_step(store, run_id, position, fn run, step ->
+      with :ok <- status_in(run, ["running"], :run_not_running),
+           :ok <- status_in(step, ["running"], :step_not_running) do
+        operation = encode!(%{kind: kind, id: id, metadata: metadata})
+        {run, Map.put(step, "operation_json", operation)}
+      end
+    end)
+  end
+
+  @spec fetch_step_operation(String.t(), String.t(), non_neg_integer(), String.t()) ::
+          {:ok, map() | nil} | {:error, term()}
+  def fetch_step_operation(store, run_id, position, kind) do
+    transact(store, fn ->
+      with {:ok, step} <- get_step(step_key(run_id, position)) do
+        case decode_optional(step["operation_json"]) do
+          {:ok, nil} -> {:ok, nil}
+          {:ok, %{"kind" => ^kind} = operation} -> {:ok, operation}
+          {:ok, %{"kind" => other}} -> Repo.rollback({:operation_kind_changed, other, kind})
+          {:ok, other} -> Repo.rollback({:invalid_step_operation, other})
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      else
+        {:error, reason} -> Repo.rollback(reason)
       end
     end)
   end
@@ -718,5 +755,15 @@ defmodule Hancho.Workflow.Store do
 
   defp decode_optional!(nil), do: nil
   defp decode_optional!(value), do: Jason.decode!(value)
+
+  defp decode_optional(nil), do: {:ok, nil}
+
+  defp decode_optional(value) do
+    case Jason.decode(value) do
+      {:ok, decoded} -> {:ok, decoded}
+      {:error, reason} -> {:error, {:invalid_state, Exception.message(reason)}}
+    end
+  end
+
   defp now, do: DateTime.utc_now() |> DateTime.to_iso8601()
 end

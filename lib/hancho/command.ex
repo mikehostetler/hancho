@@ -24,15 +24,35 @@ defmodule Hancho.Command do
 
   @spec run(String.t(), [String.t()], [option()]) :: {:ok, Result.t()} | {:error, term()}
   def run(executable, arguments, options \\ []) do
+    caller = self()
+    reply = make_ref()
+
+    {worker, monitor} =
+      spawn_monitor(fn ->
+        send(caller, {reply, run_owned(caller, executable, arguments, options)})
+      end)
+
+    receive do
+      {^reply, result} ->
+        Process.demonitor(monitor, [:flush])
+        result
+
+      {:DOWN, ^monitor, :process, ^worker, reason} ->
+        {:error, {:command_worker_stopped, reason}}
+    end
+  end
+
+  defp run_owned(caller, executable, arguments, options) do
     timeout = Keyword.get(options, :timeout, @default_timeout)
     deadline = System.monotonic_time(:millisecond) + timeout
     input = Keyword.get(options, :input)
     on_output = Keyword.get(options, :on_output)
+    caller_monitor = Process.monitor(caller)
 
     with :ok <- Hancho.Command.Runtime.ensure_started(),
          {:ok, _pid, os_pid} <- start(executable, arguments, input, options, deadline) do
       case send_input(os_pid, input) do
-        :ok -> collect(os_pid, [], [], on_output, deadline)
+        :ok -> collect(os_pid, [], [], on_output, deadline, caller_monitor)
         {:error, reason} -> stop_after_error(os_pid, reason)
       end
     end
@@ -65,19 +85,22 @@ defmodule Hancho.Command do
     end
   end
 
-  defp collect(os_pid, stdout, stderr, on_output, deadline) do
+  defp collect(os_pid, stdout, stderr, on_output, deadline, caller_monitor) do
     receive do
       {:stdout, ^os_pid, data} ->
         case emit(on_output, :stdout, data) do
-          :ok -> collect(os_pid, [stdout, data], stderr, on_output, deadline)
+          :ok -> collect(os_pid, [stdout, data], stderr, on_output, deadline, caller_monitor)
           {:error, reason} -> stop_after_error(os_pid, {:output_callback_failed, reason})
         end
 
       {:stderr, ^os_pid, data} ->
         case emit(on_output, :stderr, data) do
-          :ok -> collect(os_pid, stdout, [stderr, data], on_output, deadline)
+          :ok -> collect(os_pid, stdout, [stderr, data], on_output, deadline, caller_monitor)
           {:error, reason} -> stop_after_error(os_pid, {:output_callback_failed, reason})
         end
+
+      {:DOWN, ^caller_monitor, :process, _caller, reason} ->
+        stop_after_error(os_pid, {:caller_stopped, reason})
 
       {:DOWN, ^os_pid, :process, _pid, :normal} ->
         result(stdout, stderr, 0)

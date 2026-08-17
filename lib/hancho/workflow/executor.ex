@@ -8,15 +8,16 @@ defmodule Hancho.Workflow.Executor do
 
       Jido.Exec.run(action, params, context,
         max_retries: 0,
-        timeout: execution_timeout(params)
+        timeout: execution_timeout(action, params)
       )
     end
   end
 
-  defp execution_timeout(%{timeout_ms: timeout}) when is_integer(timeout) and timeout > 0,
-    do: timeout
+  defp execution_timeout(_action, %{timeout_ms: timeout})
+       when is_integer(timeout) and timeout > 0,
+       do: timeout + 90_000
 
-  defp execution_timeout(_params), do: 30_000
+  defp execution_timeout(_action, _params), do: 30_000
 
   defp atomize_parameter_keys(action, params) do
     allowed_keys =

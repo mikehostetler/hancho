@@ -9,6 +9,7 @@ defmodule Hancho.HarnessTest do
 
   test "reports detached run identity and normalized progress" do
     providers = Application.get_env(:jido_harness, :providers)
+    provider_config = Application.get_env(:jido_harness, :provider_config)
     directory = temporary_directory()
     :ok = Hancho.Harness.ensure_started()
 
@@ -24,6 +25,12 @@ defmodule Hancho.HarnessTest do
       else
         Application.delete_env(:jido_harness, :providers)
       end
+
+      if provider_config do
+        Application.put_env(:jido_harness, :provider_config, provider_config)
+      else
+        Application.delete_env(:jido_harness, :provider_config)
+      end
     end)
 
     test_pid = self()
@@ -37,7 +44,8 @@ defmodule Hancho.HarnessTest do
                  approval_mode: :auto_edit,
                  sandbox_mode: :workspace_write,
                  await_timeout: 1_000,
-                 progress_interval_ms: 5
+                 progress_interval_ms: 5,
+                 journal_dir: Path.join(directory, "journals")
                ],
                fn progress ->
                  send(test_pid, {:progress, progress})
@@ -56,6 +64,28 @@ defmodule Hancho.HarnessTest do
 
     assert result.run_id == run_id
     assert result.status == :completed
+
+    assert {:ok, info} = Jido.Harness.Run.info(run_id)
+    assert String.starts_with?(info.journal_dir, Path.join(directory, "journals"))
+
+    assert {:ok, attached} =
+             Hancho.Harness.run_with_progress(
+               :codex,
+               "This prompt is not used for a retained completed run.",
+               [
+                 cwd: directory,
+                 resume_run_id: run_id,
+                 await_timeout: 1_000,
+                 progress_interval_ms: 5
+               ],
+               fn progress ->
+                 send(test_pid, {:reattach_progress, progress})
+                 :ok
+               end
+             )
+
+    assert attached.run_id == run_id
+    assert_received {:reattach_progress, %{phase: :reattached, reattached: true}}
     assert :ok = Jido.Harness.Run.prune(run_id)
   end
 

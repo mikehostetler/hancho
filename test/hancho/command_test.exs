@@ -56,6 +56,29 @@ defmodule Hancho.CommandTest do
     refute eventually_alive?(child_pid)
   end
 
+  test "stops the process group when its caller exits" do
+    directory = temporary_directory()
+    shell_pid_path = Path.join(directory, "owned-shell.pid")
+    child_pid_path = Path.join(directory, "owned-child.pid")
+
+    script = "echo $$ > '#{shell_pid_path}'; sleep 30 & echo $! > '#{child_pid_path}'; wait"
+
+    caller =
+      spawn(fn ->
+        Command.run("/bin/sh", ["-c", script], timeout: 30_000)
+      end)
+
+    assert eventually_exists?(shell_pid_path)
+    assert eventually_exists?(child_pid_path)
+    Process.exit(caller, :kill)
+
+    shell_pid = shell_pid_path |> File.read!() |> String.trim()
+    child_pid = child_pid_path |> File.read!() |> String.trim()
+
+    refute eventually_alive?(shell_pid)
+    refute eventually_alive?(child_pid)
+  end
+
   defp eventually_alive?(pid, attempts \\ 20)
 
   defp eventually_alive?(pid, 0), do: alive?(pid)
@@ -73,6 +96,18 @@ defmodule Hancho.CommandTest do
     case System.cmd("/bin/kill", ["-0", pid], stderr_to_stdout: true) do
       {_output, 0} -> true
       {_output, _status} -> false
+    end
+  end
+
+  defp eventually_exists?(path, attempts \\ 40)
+  defp eventually_exists?(_path, 0), do: false
+
+  defp eventually_exists?(path, attempts) do
+    if File.exists?(path) do
+      true
+    else
+      Process.sleep(25)
+      eventually_exists?(path, attempts - 1)
     end
   end
 

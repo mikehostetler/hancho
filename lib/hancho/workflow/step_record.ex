@@ -20,6 +20,7 @@ defmodule Hancho.Workflow.StepRecord do
                   "recovery_required"
                 ]),
               params_json: Zoi.string(),
+              operation_json: Zoi.string() |> Zoi.nullish() |> Zoi.default(nil),
               result_json: Zoi.string() |> Zoi.nullish(),
               started_at: Zoi.string() |> Zoi.min(1),
               finished_at: Zoi.string() |> Zoi.nullish(),
