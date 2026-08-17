@@ -213,6 +213,18 @@ children do not run again. Queue activity includes `queue.resumed` and
 `queue.item_retried` events. Workflow activity includes a
 `workflow.retry_started` event.
 
+## Run inspection
+
+Read one durable run without starting or changing it:
+
+```sh
+./hancho run inspect RUN_ID
+```
+
+The report shows the workflow status, start and finish times, step durations,
+provider and Harness run IDs, verification summary, landed or created commit,
+retained worktree, and failure data.
+
 ## Factory activity logs
 
 Hancho writes factory activity to `.hancho/logs/factory.jsonl` by default. These events contain command output, workflow changes, agent activity, and other factory work. They are separate from the normal diagnostic logs for the Hancho application.

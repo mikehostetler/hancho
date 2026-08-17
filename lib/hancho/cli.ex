@@ -9,6 +9,8 @@ defmodule Hancho.CLI do
     hancho doctor     Inspect the repository and local tools
     hancho run WORKFLOW ISSUE_ID
                       Run one Beadwork workflow in the foreground
+    hancho run inspect RUN_ID
+                      Inspect durable workflow and step state
     hancho retry RUN_ID [--verbose]
                       Continue one stopped workflow from its failed step
     hancho resume QUEUE_ID [--verbose]
@@ -73,6 +75,21 @@ defmodule Hancho.CLI do
 
       {:error, message} ->
         IO.puts(:stderr, "ERROR: #{message}")
+        1
+    end
+  end
+
+  defp dispatch_command(["run", "inspect", run_id], [], options) do
+    project_api = Keyword.get(options, :project_api, Hancho.Project)
+    inspector = Keyword.get(options, :run_inspector, Hancho.Workflow.Inspector)
+    cwd = Keyword.get(options, :cwd, File.cwd!())
+
+    with {:ok, project} <- project_api.discover(cwd: cwd),
+         {:ok, report} <- inspector.inspect(project, run_id, options) do
+      print_run_report(report)
+    else
+      {:error, reason} ->
+        IO.puts(:stderr, "ERROR: #{format_error(reason)}")
         1
     end
   end
@@ -259,6 +276,48 @@ defmodule Hancho.CLI do
 
     1
   end
+
+  defp print_run_report(report) do
+    location = if report.current_step, do: " at #{report.current_step}", else: ""
+    IO.puts("Run: #{report.run_id}")
+    IO.puts("Workflow: #{report.workflow}")
+    IO.puts("Status: #{report.status}#{location}")
+    IO.puts("Started: #{report.started_at}")
+    IO.puts("Finished: #{report.finished_at || "running"}")
+    IO.puts("Duration: #{format_duration(report.duration_ms)}")
+    print_provider(report.provider)
+    print_verification(report.verification)
+    IO.puts("Commit: #{report.commit || "none"}")
+    IO.puts("Retained worktree: #{report.retained_worktree || "none"}")
+    if report.failure, do: IO.puts("Failure: #{format_error(report.failure)}")
+    IO.puts("Steps:")
+
+    Enum.each(report.steps, fn step ->
+      IO.puts(
+        "#{step.position + 1}. #{step.name}: #{step.status} (#{format_duration(step.duration_ms)})"
+      )
+    end)
+
+    0
+  end
+
+  defp print_provider(nil), do: IO.puts("Provider: not started")
+
+  defp print_provider(provider) do
+    identity = provider["harness_run_id"] || "unknown run"
+    IO.puts("Provider: #{provider["provider"]} #{provider["status"]} (#{identity})")
+  end
+
+  defp print_verification(nil), do: IO.puts("Verification: not started")
+
+  defp print_verification(verification) do
+    summary = if verification.summary, do: " — #{verification.summary}", else: ""
+    IO.puts("Verification: exit #{verification.exit_status}#{summary}")
+    if verification.output_path, do: IO.puts("Verification output: #{verification.output_path}")
+  end
+
+  defp format_duration(value) when is_integer(value), do: "#{value} ms"
+  defp format_duration(_value), do: "unknown"
 
   defp format_error(reason) when is_binary(reason), do: reason
   defp format_error(reason), do: inspect(reason)

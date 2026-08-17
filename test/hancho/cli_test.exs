@@ -86,6 +86,36 @@ defmodule Hancho.CLITest do
     end
   end
 
+  defmodule RunInspector do
+    def inspect(project, "run-123", _options) do
+      send(self(), {:run_inspect, project})
+
+      {:ok,
+       %{
+         run_id: "run-123",
+         workflow: "implement",
+         status: "stopped",
+         current_step: "verify",
+         started_at: "2026-08-17T10:00:00Z",
+         finished_at: "2026-08-17T10:01:00Z",
+         duration_ms: 60_000,
+         provider: %{
+           "provider" => "grok",
+           "harness_run_id" => "harness-1",
+           "status" => "completed"
+         },
+         verification: nil,
+         commit: nil,
+         retained_worktree: "/repo/.hancho/worktrees/run-123",
+         failure: "tests failed",
+         steps: [
+           %{position: 0, name: "implement", status: "completed", duration_ms: 55_000},
+           %{position: 1, name: "verify", status: "stopped", duration_ms: 5_000}
+         ]
+       }}
+    end
+  end
+
   test "has explicit help and version commands" do
     assert capture_io(fn -> assert Hancho.CLI.run([]) == 0 end) =~ "Usage:"
     assert capture_io(fn -> assert Hancho.CLI.run(["--help"]) == 0 end) =~ "hancho doctor"
@@ -137,6 +167,26 @@ defmodule Hancho.CLITest do
                      %{"repo_path" => "/repo", "issue_id" => "hancho-123"}}
 
     assert project.bedrock_path == "/repo/.hancho/bedrock"
+  end
+
+  test "inspects durable workflow state" do
+    output =
+      capture_io(fn ->
+        assert Hancho.CLI.run(["run", "inspect", "run-123"],
+                 cwd: "/repo",
+                 project_api: ProjectAPI,
+                 run_inspector: RunInspector
+               ) == 0
+      end)
+
+    assert output =~ "Run: run-123\n"
+    assert output =~ "Status: stopped at verify\n"
+    assert output =~ "Provider: grok completed (harness-1)\n"
+    assert output =~ "Verification: not started\n"
+    assert output =~ "Retained worktree: /repo/.hancho/worktrees/run-123\n"
+    assert output =~ "2. verify: stopped (5000 ms)\n"
+    assert_received {:run_inspect, project}
+    assert project.root == "/repo"
   end
 
   test "retries a stopped workflow" do
