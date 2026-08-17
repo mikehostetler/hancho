@@ -2,14 +2,15 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T14:39:51Z",
   "created": "2026-08-17T14:25:02Z",
   "description": "Resume a stopped durable queue and retry its stopped child without repeating completed work. Validate the saved repository baseline before execution.",
   "id": "hancho-f4m.1",
   "labels": [],
   "parent": "hancho-f4m",
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Add queue retry and resume",
   "type": "task",
-  "updated_at": "2026-08-17T14:32:12Z"
+  "updated_at": "2026-08-17T14:39:51Z"
 }
