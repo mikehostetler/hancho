@@ -9,9 +9,15 @@
   "id": "hancho-boi.3",
   "labels": [],
   "parent": "hancho-boi",
+  "comments": [
+    {
+      "text": "Implemented in f54ad80. Workflows now declare one workspace. In-place stopped runs allow retained dirty files while branch and HEAD checks remain active.",
+      "timestamp": "2026-08-17T19:32:06Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "Support stopped in-place workflows",
   "type": "task",
-  "updated_at": "2026-08-17T19:27:18Z"
+  "updated_at": "2026-08-17T19:32:06Z"
 }
