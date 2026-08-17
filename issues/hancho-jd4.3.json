@@ -4,14 +4,16 @@
     "hancho-jd4.2"
   ],
   "blocks": [],
+  "closed_at": "2026-08-17T00:26:20Z",
+  "close_reason": "Added reusable command output sinks, safe callback failure handling, Logger level protection, rotation and integration tests, escript checks, doctor output, and documentation.",
   "created": "2026-08-17T00:09:34Z",
   "description": "Add capture sinks, tests for durable JSONL and text output, rotation and disabled logging, escript validation, and documentation.",
   "id": "hancho-jd4.3",
   "labels": [],
   "parent": "hancho-jd4",
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Integrate and verify log capture",
   "type": "task",
-  "updated_at": "2026-08-17T00:18:48Z"
+  "updated_at": "2026-08-17T00:26:20Z"
 }
