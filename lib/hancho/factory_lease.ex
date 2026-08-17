@@ -1,6 +1,8 @@
 defmodule Hancho.FactoryLease do
   @moduledoc "Owns the single mutating factory lease for one repository."
 
+  alias Hancho.Command.Result
+
   @heartbeat_interval_ms 5_000
   @stale_after_ms 60_000
   @retry_limit 4
@@ -136,7 +138,7 @@ defmodule Hancho.FactoryLease do
         send(from, {:heartbeat_stopped, self()})
 
       {:DOWN, ^parent_monitor, :process, _parent, _reason} ->
-        :ok
+        release_abandoned_owner(owner_path, expected_token)
     after
       interval_ms ->
         updated = Map.put(owner, "heartbeat_at_ms", now_ms())
@@ -177,7 +179,7 @@ defmodule Hancho.FactoryLease do
         heartbeat_at = Map.get(owner, "heartbeat_at_ms", 0)
 
         if now_ms() - heartbeat_at > stale_after_ms do
-          reclaim(path)
+          reclaim_stale_owner(path, owner)
         else
           {:error, {:factory_busy, owner}}
         end
@@ -204,6 +206,54 @@ defmodule Hancho.FactoryLease do
 
       {:error, reason} ->
         {:error, {:factory_lease_stat_failed, reason}}
+    end
+  end
+
+  defp reclaim_stale_owner(path, owner) do
+    case owner_liveness(owner) do
+      :dead -> reclaim(path)
+      _alive_or_unknown -> {:error, {:factory_busy, owner}}
+    end
+  end
+
+  defp owner_liveness(%{"host" => host, "os_pid" => pid}) when is_binary(pid) do
+    cond do
+      not Regex.match?(~r/^[1-9][0-9]*$/, pid) -> :dead
+      host != hostname() -> :unknown
+      true -> local_process_liveness(pid)
+    end
+  end
+
+  defp owner_liveness(_owner), do: :dead
+
+  defp local_process_liveness(pid) do
+    case System.find_executable("kill") do
+      nil ->
+        :unknown
+
+      executable ->
+        case Hancho.Command.run(executable, ["-0", pid],
+               timeout: 1_000,
+               capture_limit: 1_024,
+               stderr_to_stdout: true
+             ) do
+          {:ok, %Result{exit_status: 0}} -> :alive
+          {:ok, %Result{}} -> :dead
+          {:error, _reason} -> :unknown
+        end
+    end
+  end
+
+  defp release_abandoned_owner(owner_path, expected_token) do
+    case owner_token(owner_path) do
+      {:ok, ^expected_token} ->
+        with :ok <- remove_if_present(owner_path),
+             :ok <- remove_lock_directory(Path.dirname(owner_path)) do
+          :ok
+        end
+
+      _owner_changed_or_removed ->
+        :ok
     end
   end
 

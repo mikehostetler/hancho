@@ -2,6 +2,7 @@ defmodule Hancho.Actions.Verify do
   @moduledoc "Runs verification and retains compact and complete output records."
 
   @progress_bytes 65_536
+  @output_open_attempts 8
 
   use Jido.Action,
     name: "hancho_verify",
@@ -23,9 +24,7 @@ defmodule Hancho.Actions.Verify do
     command = Context.service(context, :command, Hancho.Command)
     executable = System.find_executable(params.executable) || params.executable
 
-    with {:ok, output_path} <- prepare_output(params, context),
-         {:ok, device} <- File.open(output_path, [:write, :binary, :exclusive]),
-         :ok <- File.chmod(output_path, 0o600),
+    with {:ok, output_path, device} <- open_output(params, context),
          {:ok, tracker} <-
            Agent.start_link(fn -> %{bytes: 0, chunks: 0, next_emit: @progress_bytes} end) do
       try do
@@ -49,16 +48,40 @@ defmodule Hancho.Actions.Verify do
     end
   end
 
-  defp prepare_output(params, context) do
+  defp open_output(params, context) do
     repository = params.repo_path || repository_from_worktree(params.worktree_path)
     logs_path = Path.join([repository, ".hancho", "logs"])
     run_id = safe_run_id(context[:run_id])
-    unique = System.unique_integer([:positive, :monotonic])
-    path = Path.join(logs_path, "#{run_id}-verify-#{unique}.log")
 
     with :ok <- File.mkdir_p(logs_path),
          :ok <- File.chmod(logs_path, 0o700) do
-      {:ok, path}
+      open_unique_output(logs_path, run_id, @output_open_attempts)
+    end
+  end
+
+  defp open_unique_output(_logs_path, _run_id, 0),
+    do: {:error, :verification_output_name_exhausted}
+
+  defp open_unique_output(logs_path, run_id, attempts) do
+    nonce = :crypto.strong_rand_bytes(12) |> Base.url_encode64(padding: false)
+    path = Path.join(logs_path, "#{run_id}-verify-#{nonce}.log")
+
+    case File.open(path, [:write, :binary, :exclusive]) do
+      {:ok, device} -> protect_output(path, device)
+      {:error, :eexist} -> open_unique_output(logs_path, run_id, attempts - 1)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp protect_output(path, device) do
+    case File.chmod(path, 0o600) do
+      :ok ->
+        {:ok, path, device}
+
+      {:error, reason} ->
+        File.close(device)
+        File.rm(path)
+        {:error, reason}
     end
   end
 

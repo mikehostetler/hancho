@@ -51,17 +51,18 @@ defmodule Hancho.Workflow.QueueReconciler do
           {:ok, map()} | {:error, map() | term()}
   def after_stopped_run(project, queue, artifacts, options \\ []) do
     git = Keyword.get(options, :git, Hancho.Git)
-    expected_head = get_in(artifacts, ["commit", "commit"]) || queue["expected_head"]
     expected_worktrees = queue_worktrees(queue) ++ run_worktrees(artifacts)
 
     with {:ok, mode} <- workspace_mode(project, artifacts) do
+      expected_heads = stopped_repository_heads(mode, queue, artifacts)
+
       cleanliness =
         if mode == :in_place and is_nil(artifacts["commit"]), do: :allow_dirty, else: :clean
 
       check(
         project,
         queue["expected_branch"],
-        expected_head,
+        expected_heads,
         expected_worktrees,
         git,
         cleanliness
@@ -76,7 +77,7 @@ defmodule Hancho.Workflow.QueueReconciler do
          :ok <- repository_status(status, cleanliness),
          :ok <- equal("branch", expected_branch, status.branch),
          {:ok, head} <- git.head(working_dir: project.root),
-         :ok <- equal("head", expected_head, head),
+         :ok <- expected_head(expected_head, head),
          {:ok, filesystem_paths} <- filesystem_paths(project.worktrees_path),
          :ok <- equal("worktree_directories", expected_paths, filesystem_paths),
          {:ok, registered} <- registered_worktrees(git, project),
@@ -105,6 +106,27 @@ defmodule Hancho.Workflow.QueueReconciler do
   end
 
   defp workspace_mode(_project, _artifacts), do: {:ok, :worktree}
+
+  defp stopped_repository_heads(:in_place, queue, artifacts) do
+    expected =
+      get_in(artifacts, ["landing", "commit"]) ||
+        get_in(artifacts, ["commit", "commit"]) ||
+        queue["expected_head"]
+
+    [expected]
+  end
+
+  defp stopped_repository_heads(:worktree, queue, artifacts) do
+    case get_in(artifacts, ["landing", "commit"]) do
+      landed when is_binary(landed) ->
+        [landed]
+
+      _not_landed ->
+        [queue["expected_head"], get_in(artifacts, ["commit", "commit"])]
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
+    end
+  end
 
   defp run_worktrees(artifacts) do
     created = artifacts["worktree_created"]
@@ -230,6 +252,19 @@ defmodule Hancho.Workflow.QueueReconciler do
 
   defp equal(_field, value, value), do: :ok
   defp equal(field, expected, actual), do: mismatch(field, expected, actual)
+
+  defp expected_head(expected, actual) when is_list(expected) do
+    if actual in expected do
+      :ok
+    else
+      case expected do
+        [one] -> mismatch("head", one, actual)
+        many -> mismatch("head", many, actual)
+      end
+    end
+  end
+
+  defp expected_head(expected, actual), do: equal("head", expected, actual)
 
   defp mismatch(field, expected, actual) do
     {:error,

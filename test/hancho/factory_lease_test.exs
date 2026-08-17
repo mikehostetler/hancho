@@ -41,6 +41,31 @@ defmodule Hancho.FactoryLeaseTest do
     assert :ok = FactoryLease.release(lease)
   end
 
+  test "does not reclaim a stale heartbeat from a live local owner" do
+    project = project()
+    path = Path.join(project.hancho_dir, "factory.lock")
+    owner_path = Path.join(path, "owner.json")
+    File.mkdir_p!(path)
+
+    File.write!(
+      owner_path,
+      Jason.encode!(%{
+        "schema_version" => 1,
+        "token" => "paused-live-owner",
+        "command" => "long run",
+        "os_pid" => System.pid(),
+        "host" => hostname(),
+        "started_at_ms" => 0,
+        "heartbeat_at_ms" => 0
+      })
+    )
+
+    assert {:error, {:factory_busy, owner}} =
+             FactoryLease.acquire(project, lease_command: "second", lease_stale_after_ms: 1)
+
+    assert owner["token"] == "paused-live-owner"
+  end
+
   test "keeps an active lease fresh for a short stale interval" do
     project = project()
     assert {:ok, lease} = FactoryLease.acquire(project, lease_stale_after_ms: 300)
@@ -146,5 +171,10 @@ defmodule Hancho.FactoryLeaseTest do
     else
       false
     end
+  end
+
+  defp hostname do
+    {:ok, hostname} = :inet.gethostname()
+    List.to_string(hostname)
   end
 end

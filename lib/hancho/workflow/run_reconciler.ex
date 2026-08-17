@@ -14,16 +14,13 @@ defmodule Hancho.Workflow.RunReconciler do
         QueueReconciler.initial(project, options)
 
       preflight ->
-        expected_head =
-          get_in(artifacts, ["landing", "commit"]) ||
-            get_in(artifacts, ["commit", "commit"]) || preflight["baseline"]
-
         with {:ok, mode} <- workspace_mode(project, artifacts),
+             expected_heads = expected_repository_heads(mode, artifacts, preflight),
              {:ok, status} <- git.status(working_dir: project.root, untracked_files: :all),
              :ok <- repository_status(status, mode, artifacts),
              :ok <- equal("branch", preflight["branch"], status.branch),
              {:ok, head} <- git.head(working_dir: project.root),
-             :ok <- equal("head", expected_head, head),
+             :ok <- one_of("head", expected_heads, head),
              :ok <- check_worktree(project, artifacts, git) do
           {:ok,
            %{
@@ -73,6 +70,27 @@ defmodule Hancho.Workflow.RunReconciler do
   end
 
   defp workspace_mode(_project, _artifacts), do: {:ok, :worktree}
+
+  defp expected_repository_heads(:in_place, artifacts, preflight) do
+    expected =
+      get_in(artifacts, ["landing", "commit"]) ||
+        get_in(artifacts, ["commit", "commit"]) ||
+        preflight["baseline"]
+
+    [expected]
+  end
+
+  defp expected_repository_heads(:worktree, artifacts, preflight) do
+    case get_in(artifacts, ["landing", "commit"]) do
+      landed when is_binary(landed) ->
+        [landed]
+
+      _not_landed ->
+        [preflight["baseline"], get_in(artifacts, ["commit", "commit"])]
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
+    end
+  end
 
   defp repository_status(_status, :in_place, artifacts)
        when not is_map_key(artifacts, "commit") and not is_map_key(artifacts, "landing"),
@@ -128,6 +146,17 @@ defmodule Hancho.Workflow.RunReconciler do
 
   defp equal(_field, value, value), do: :ok
   defp equal(field, expected, actual), do: mismatch(field, expected, actual)
+
+  defp one_of(field, expected, actual) do
+    if actual in expected do
+      :ok
+    else
+      case expected do
+        [one] -> mismatch(field, one, actual)
+        many -> mismatch(field, many, actual)
+      end
+    end
+  end
 
   defp mismatch(field, expected, actual) do
     {:error,

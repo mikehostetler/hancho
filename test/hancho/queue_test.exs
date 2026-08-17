@@ -797,6 +797,79 @@ defmodule Hancho.QueueTest do
              RunReconciler.retry(project, outputs, definition: definition)
   end
 
+  test "keeps the main repository at baseline while it retries an unlanded worktree commit" do
+    repository = temporary_repository()
+    {:ok, repository} = Hancho.Git.repository_root(working_dir: repository)
+    project = Hancho.Project.new(repository)
+    File.mkdir_p!(project.worktrees_path)
+    {:ok, baseline} = Hancho.Git.head(working_dir: repository)
+    path = Path.join(project.worktrees_path, "run-retry-land")
+    assert {:ok, :done} = Hancho.Git.create_worktree(repository, path, baseline)
+
+    File.write!(Path.join(path, "feature.txt"), "retained commit\n")
+    {_output, 0} = System.cmd("git", ["-C", path, "add", "feature.txt"])
+
+    {_output, 0} =
+      System.cmd("git", [
+        "-C",
+        path,
+        "-c",
+        "user.name=Hancho Test",
+        "-c",
+        "user.email=hancho@example.test",
+        "commit",
+        "-m",
+        "feat: retain worktree commit"
+      ])
+
+    {:ok, commit} = Hancho.Git.head(working_dir: path)
+    refute commit == baseline
+
+    outputs = %{
+      "preflight" => %{"baseline" => baseline, "branch" => "main"},
+      "create_worktree" => %{"baseline" => baseline, "worktree_path" => path},
+      "commit" => %{"commit" => commit, "issue_id" => "task-1"}
+    }
+
+    {:ok, definition} =
+      Hancho.Workflow.Definition.new(%{
+        name: "retry-land",
+        version: 1,
+        steps: [
+          %{name: "preflight", action: "Hancho.Actions.Preflight", params: %{}},
+          %{
+            name: "create_worktree",
+            action: "Hancho.Actions.CreateWorktree",
+            params: %{}
+          },
+          %{name: "commit", action: "Hancho.Actions.Commit", params: %{}},
+          %{name: "land", action: "Hancho.Actions.Land", params: %{}}
+        ]
+      })
+
+    assert {:ok, %{head: ^baseline}} =
+             RunReconciler.retry(project, outputs, definition: definition)
+
+    artifacts = Hancho.Workflow.Artifacts.from_outputs(definition, outputs)
+
+    queue = %{
+      "expected_branch" => "main",
+      "expected_head" => baseline,
+      "expected_worktrees" => []
+    }
+
+    assert {:ok, %{head: ^baseline, worktrees: [^path]}} =
+             QueueReconciler.after_stopped_run(project, queue, artifacts)
+
+    assert {:ok, _result} = Hancho.Git.merge_ff_only(repository, commit)
+
+    assert {:ok, %{head: ^commit}} =
+             RunReconciler.retry(project, outputs, definition: definition)
+
+    assert {:ok, %{head: ^commit, worktrees: [^path]}} =
+             QueueReconciler.after_stopped_run(project, queue, artifacts)
+  end
+
   test "allows a stopped in-place run to retry with retained changes" do
     repository = temporary_repository()
     project = Hancho.Project.new(repository)
