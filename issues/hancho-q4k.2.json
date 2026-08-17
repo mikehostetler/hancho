@@ -6,14 +6,16 @@
   "blocks": [
     "hancho-q4k.6"
   ],
+  "closed_at": "2026-08-17T16:10:27Z",
+  "close_reason": "Implemented in 5479d8f",
   "created": "2026-08-17T15:51:19Z",
   "description": "Add durable effect intent and receipt support. Make worktree creation, commit, land, cleanup, and Beadwork finalization safe to reconcile and repeat. Verify the expected branch during landing.",
   "id": "hancho-q4k.2",
   "labels": [],
   "parent": "hancho-q4k",
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Make external effects recoverable",
   "type": "task",
-  "updated_at": "2026-08-17T16:04:20Z"
+  "updated_at": "2026-08-17T16:10:27Z"
 }
