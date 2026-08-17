@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Mike Hostetler",
   "blocked_by": [
     "hancho-jd4.1"
   ],
@@ -12,8 +12,8 @@
   "labels": [],
   "parent": "hancho-jd4",
   "priority": 1,
-  "status": "open",
+  "status": "in_progress",
   "title": "Add Logger-backed activity writer",
   "type": "task",
-  "updated_at": "2026-08-17T00:09:34Z"
+  "updated_at": "2026-08-17T00:12:50Z"
 }
