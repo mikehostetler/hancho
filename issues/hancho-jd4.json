@@ -2,13 +2,15 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T00:26:23Z",
+  "close_reason": "Hancho now configures, normalizes, writes, rotates, and documents durable repository-local factory activity logs.",
   "created": "2026-08-17T00:09:34Z",
   "description": "Capture normalized factory activity through Elixir Logger and OTP file handlers in the repository-local .hancho/logs folder.",
   "id": "hancho-jd4",
   "labels": [],
   "priority": 1,
-  "status": "open",
+  "status": "closed",
   "title": "Add durable factory activity logs",
   "type": "epic",
-  "updated_at": "2026-08-17T00:09:34Z"
+  "updated_at": "2026-08-17T00:26:23Z"
 }
