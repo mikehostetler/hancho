@@ -116,6 +116,50 @@ defmodule Hancho.CLITest do
     end
   end
 
+  defmodule WorktreesAPI do
+    def list(project, _options) do
+      send(self(), {:worktrees_list, project})
+
+      {:ok,
+       [
+         %{
+           id: "run-retained",
+           clean: false,
+           size_bytes: 287_000_000
+         }
+       ]}
+    end
+
+    def inspect(project, "run-retained", _options) do
+      send(self(), {:worktrees_inspect, project})
+
+      {:ok,
+       %{
+         id: "run-retained",
+         path: "/repo/.hancho/worktrees/run-retained",
+         registered: true,
+         detached: true,
+         head: "abc123",
+         clean: false,
+         size_bytes: 287_000_000,
+         generated_bytes: 285_000_000,
+         changed_paths: ["feature.ex"]
+       }}
+    end
+
+    def clean(project, "run-retained", _options) do
+      send(self(), {:worktrees_clean, project})
+
+      {:ok,
+       %{
+         id: "run-retained",
+         removed: ["_build", "deps"],
+         reclaimed_bytes: 285_000_000,
+         source_changes_retained: true
+       }}
+    end
+  end
+
   test "has explicit help and version commands" do
     assert capture_io(fn -> assert Hancho.CLI.run([]) == 0 end) =~ "Usage:"
     assert capture_io(fn -> assert Hancho.CLI.run(["--help"]) == 0 end) =~ "hancho doctor"
@@ -187,6 +231,37 @@ defmodule Hancho.CLITest do
     assert output =~ "2. verify: stopped (5000 ms)\n"
     assert_received {:run_inspect, project}
     assert project.root == "/repo"
+  end
+
+  test "lists, inspects, and cleans retained worktrees" do
+    options = [cwd: "/repo", project_api: ProjectAPI, worktrees_api: WorktreesAPI]
+
+    assert capture_io(fn -> assert Hancho.CLI.run(["worktrees", "list"], options) == 0 end) ==
+             "run-retained: changed, 287000000 bytes\n"
+
+    inspect_output =
+      capture_io(fn ->
+        assert Hancho.CLI.run(["worktrees", "inspect", "run-retained"], options) == 0
+      end)
+
+    assert inspect_output =~ "Worktree: run-retained\n"
+    assert inspect_output =~ "Registered: yes\n"
+    assert inspect_output =~ "Generated: 285000000 bytes\n"
+    assert inspect_output =~ "- feature.ex\n"
+
+    clean_output =
+      capture_io(fn ->
+        assert Hancho.CLI.run(["worktrees", "clean", "run-retained"], options) == 0
+      end)
+
+    assert clean_output ==
+             "Cleaned run-retained: _build, deps\n" <>
+               "Reclaimed: 285000000 bytes\n" <>
+               "Source changes retained: yes\n"
+
+    assert_received {:worktrees_list, %Hancho.Project{root: "/repo"}}
+    assert_received {:worktrees_inspect, %Hancho.Project{root: "/repo"}}
+    assert_received {:worktrees_clean, %Hancho.Project{root: "/repo"}}
   end
 
   test "retries a stopped workflow" do

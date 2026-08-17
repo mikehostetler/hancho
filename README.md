@@ -237,6 +237,31 @@ KiB and one `verify.completed` summary. It does not write one factory event for
 each test-runner output chunk. `hancho run inspect` reports the complete output
 path.
 
+## Retained worktrees
+
+List retained worktrees and their total storage use:
+
+```sh
+./hancho worktrees list
+```
+
+Inspect Git registration, commit, changed paths, and generated storage for one
+run:
+
+```sh
+./hancho worktrees inspect RUN_ID
+```
+
+Remove only `_build`, `deps`, and `cover` from one registered retained
+worktree:
+
+```sh
+./hancho worktrees clean RUN_ID
+```
+
+The clean command keeps the worktree, Git registration, source changes, and
+all other diagnostic files.
+
 ## Factory activity logs
 
 Hancho writes factory activity to `.hancho/logs/factory.jsonl` by default. These events contain command output, workflow changes, agent activity, and other factory work. They are separate from the normal diagnostic logs for the Hancho application.

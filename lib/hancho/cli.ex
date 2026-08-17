@@ -15,6 +15,12 @@ defmodule Hancho.CLI do
                       Continue one stopped workflow from its failed step
     hancho resume QUEUE_ID [--verbose]
                       Continue one stopped queue from its failed child
+    hancho worktrees list
+                      List retained Hancho worktrees and storage use
+    hancho worktrees inspect RUN_ID
+                      Inspect one retained worktree
+    hancho worktrees clean RUN_ID
+                      Remove generated artifacts from one retained worktree
     hancho queue WORKFLOW --source beadwork-ready --count N [--dry-run] [--verbose]
                       Run ready Beadwork tasks serially in the foreground
     hancho --version  Print the Hancho version
@@ -153,6 +159,37 @@ defmodule Hancho.CLI do
       {:error, reason} ->
         IO.puts(:stderr, "ERROR: #{format_error(reason)}")
         1
+    end
+  end
+
+  defp dispatch_command(["worktrees", "list"], [], options) do
+    with {:ok, project} <- discover_project(options),
+         {:ok, reports} <- worktrees_api(options).list(project, options) do
+      print_worktree_list(reports)
+    else
+      {:error, reason} -> command_error(reason)
+    end
+  end
+
+  defp dispatch_command(["worktrees", "inspect", id], [], options) do
+    with {:ok, project} <- discover_project(options),
+         {:ok, report} <- worktrees_api(options).inspect(project, id, options) do
+      print_worktree(report)
+    else
+      {:error, reason} -> command_error(reason)
+    end
+  end
+
+  defp dispatch_command(["worktrees", "clean", id], [], options) do
+    with {:ok, project} <- discover_project(options),
+         {:ok, result} <- worktrees_api(options).clean(project, id, options) do
+      removed = if result.removed == [], do: "none", else: Enum.join(result.removed, ", ")
+      IO.puts("Cleaned #{result.id}: #{removed}")
+      IO.puts("Reclaimed: #{result.reclaimed_bytes} bytes")
+      IO.puts("Source changes retained: yes")
+      0
+    else
+      {:error, reason} -> command_error(reason)
     end
   end
 
@@ -300,6 +337,53 @@ defmodule Hancho.CLI do
 
     0
   end
+
+  defp print_worktree_list([]) do
+    IO.puts("No retained Hancho worktrees.")
+    0
+  end
+
+  defp print_worktree_list(reports) do
+    Enum.each(reports, fn
+      %{error: error} = report ->
+        IO.puts("#{report.id}: error #{format_error(error)}")
+
+      report ->
+        state = if report.clean, do: "clean", else: "changed"
+        IO.puts("#{report.id}: #{state}, #{report.size_bytes} bytes")
+    end)
+
+    0
+  end
+
+  defp print_worktree(report) do
+    IO.puts("Worktree: #{report.id}")
+    IO.puts("Path: #{report.path}")
+    IO.puts("Registered: #{yes_no(report.registered)}")
+    IO.puts("Detached: #{yes_no(report.detached)}")
+    IO.puts("Head: #{report.head || "unknown"}")
+    IO.puts("Status: #{if(report.clean, do: "clean", else: "changed")}")
+    IO.puts("Size: #{report.size_bytes} bytes")
+    IO.puts("Generated: #{report.generated_bytes} bytes")
+    IO.puts("Changed paths: #{length(report.changed_paths)}")
+    Enum.each(report.changed_paths, &IO.puts("- #{&1}"))
+    0
+  end
+
+  defp discover_project(options) do
+    project_api = Keyword.get(options, :project_api, Hancho.Project)
+    project_api.discover(cwd: Keyword.get(options, :cwd, File.cwd!()))
+  end
+
+  defp worktrees_api(options), do: Keyword.get(options, :worktrees_api, Hancho.Worktrees)
+
+  defp command_error(reason) do
+    IO.puts(:stderr, "ERROR: #{format_error(reason)}")
+    1
+  end
+
+  defp yes_no(true), do: "yes"
+  defp yes_no(_value), do: "no"
 
   defp print_provider(nil), do: IO.puts("Provider: not started")
 
