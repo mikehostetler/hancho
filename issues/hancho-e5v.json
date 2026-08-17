@@ -6,9 +6,15 @@
   "description": "Add durable on_error policies that use the configured coding provider to repair approved gate failures in the same workspace, retry the failed gate within a strict attempt limit, and record repair evidence.",
   "id": "hancho-e5v",
   "labels": [],
+  "comments": [
+    {
+      "text": "Implemented on_error as a self-retry policy for ValidateScope and Verify only. Limits are 1-3 attempts. Repair intent, prompt, provider result, and errors are durable. Repository-state and unknown failures stay terminal. The llmux local workflow uses Grok with one attempt for scope and verification.",
+      "timestamp": "2026-08-17T20:02:36Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "Add bounded workflow repair loops",
   "type": "task",
-  "updated_at": "2026-08-17T19:46:08Z"
+  "updated_at": "2026-08-17T20:02:36Z"
 }
