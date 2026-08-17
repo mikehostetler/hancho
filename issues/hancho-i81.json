@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T02:14:09Z",
+  "description": "Remove Exqlite and its escript NIF extraction. Execute SQLite directly through the sqlite3 CLI under Hancho.Command, keep .hancho/hancho.sqlite3 and the Workflow.Store API, add doctor and escript validation.",
+  "id": "hancho-i81",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Replace Exqlite with sqlite3 CLI",
+  "type": "task",
+  "updated_at": "2026-08-17T02:14:09Z"
+}
