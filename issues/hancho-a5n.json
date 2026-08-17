@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T01:47:57Z",
+  "description": "Install jido_action, yaml_elixir, and exqlite. Add ordered named YAML workflow steps with explicit parameter references, a foreground :gen_statem runner, SQLite state at .hancho/hancho.sqlite3, and an implementation workflow for one Beadwork issue.",
+  "id": "hancho-a5n",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Add YAML action workflows with SQLite state",
+  "type": "task",
+  "updated_at": "2026-08-17T01:47:57Z"
+}
