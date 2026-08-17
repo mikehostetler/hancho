@@ -2,13 +2,15 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T17:40:50Z",
+  "close_reason": "Implemented in 48bbd93 with legacy workflow integration coverage",
   "created": "2026-08-17T17:36:27Z",
   "description": "The llmux burn-in stopped after commit because its durable workflow snapshot predates the explicit Land branch parameter. Keep the current explicit workflow contract, but let Land recover the expected branch only from the durable Preflight artifact when the old snapshot omits it. Pass stable artifacts into action context and add integration coverage for the legacy workflow shape.",
   "id": "hancho-a9c",
   "labels": [],
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Recover landing from legacy workflow snapshots",
   "type": "task",
-  "updated_at": "2026-08-17T17:36:30Z"
+  "updated_at": "2026-08-17T17:40:50Z"
 }
