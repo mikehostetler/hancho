@@ -7,6 +7,18 @@ unless Regex.match?(~r/^\d+\.\d+\.\d+\n$/, version) do
   raise "unexpected Hancho version output: #{inspect(version)}"
 end
 
+{short_version, 0} = System.cmd(hancho, ["-v"], cd: root, stderr_to_stdout: true)
+
+unless short_version == version do
+  raise "short version option did not match --version"
+end
+
+{invalid_option, 2} = System.cmd(hancho, ["--invalid"], cd: root, stderr_to_stdout: true)
+
+unless invalid_option =~ "Unknown option: --invalid" do
+  raise "invalid option did not report an error"
+end
+
 {unknown, 2} = System.cmd(hancho, ["unknown"], cd: root, stderr_to_stdout: true)
 
 unless unknown =~ "Unknown command" do
