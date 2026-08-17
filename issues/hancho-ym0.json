@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
   "created": "2026-08-17T12:40:11Z",
@@ -7,8 +7,8 @@
   "id": "hancho-ym0",
   "labels": [],
   "priority": 1,
-  "status": "open",
+  "status": "in_progress",
   "title": "Add deterministic Jido Harness integration coverage",
   "type": "task",
-  "updated_at": "2026-08-17T12:40:11Z"
+  "updated_at": "2026-08-17T12:40:16Z"
 }
