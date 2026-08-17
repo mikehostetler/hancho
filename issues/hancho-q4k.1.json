@@ -2,7 +2,8 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [
-    "hancho-q4k.2"
+    "hancho-q4k.2",
+    "hancho-q4k.3"
   ],
   "created": "2026-08-17T15:51:19Z",
   "description": "Add typed durable run, step, queue, item, lease, and attempt state. Enforce legal transitions. Add one repository factory lease, stale-owner detection, interruption recovery, phase-aware queue resume, and atomic run/step failure transitions.",
@@ -13,5 +14,5 @@
   "status": "open",
   "title": "Add crash recovery and factory leases",
   "type": "task",
-  "updated_at": "2026-08-17T15:51:27Z"
+  "updated_at": "2026-08-17T15:51:28Z"
 }

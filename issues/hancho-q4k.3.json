@@ -1,6 +1,8 @@
 {
   "assignee": "",
-  "blocked_by": [],
+  "blocked_by": [
+    "hancho-q4k.1"
+  ],
   "blocks": [],
   "created": "2026-08-17T15:51:19Z",
   "description": "Separate runtime, idle, await, cancellation, cleanup, and outer action budgets. Cancel and await detached Harness runs on all error paths. Persist attempt identity and repository-local journal data.",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "Own Harness and command lifecycles",
   "type": "task",
-  "updated_at": "2026-08-17T15:51:19Z"
+  "updated_at": "2026-08-17T15:51:28Z"
 }
