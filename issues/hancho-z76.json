@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
   "created": "2026-08-17T12:21:49Z",
@@ -7,8 +7,8 @@
   "id": "hancho-z76",
   "labels": [],
   "priority": 1,
-  "status": "open",
+  "status": "in_progress",
   "title": "Add deterministic foreground workflow queues",
   "type": "task",
-  "updated_at": "2026-08-17T12:21:49Z"
+  "updated_at": "2026-08-17T12:21:53Z"
 }
