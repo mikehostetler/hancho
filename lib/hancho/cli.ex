@@ -150,6 +150,14 @@ defmodule Hancho.CLI do
     count = length(preview.issues)
     noun = if count == 1, do: "task", else: "tasks"
     IO.puts("Dry run: #{preview.workflow} selected #{count} #{noun} from #{preview.source}.")
+    IO.puts("Repository: #{preview.repository.branch} at #{preview.repository.head} (clean)")
+    IO.puts("Retained worktrees: #{length(preview.repository.worktrees)}")
+    IO.puts("Provider: #{preview.settings.provider || "not configured"}")
+
+    IO.puts(
+      "Timeouts: implement #{format_milliseconds(preview.settings.implementation_timeout_ms)}, " <>
+        "verify #{format_milliseconds(preview.settings.verification_timeout_ms)}"
+    )
 
     preview.issues
     |> Enum.with_index(1)
@@ -162,6 +170,9 @@ defmodule Hancho.CLI do
   end
 
   defp print_queue_output(result, false), do: print_queue_result(result)
+
+  defp format_milliseconds(value) when is_integer(value), do: "#{value} ms"
+  defp format_milliseconds(_value), do: "not configured"
 
   defp print_usage do
     IO.puts(@usage)

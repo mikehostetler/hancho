@@ -81,6 +81,27 @@ defmodule Hancho.QueueTest do
     defp summary(head), do: %{branch: "main", head: head, clean: true, worktrees: []}
   end
 
+  defmodule PreviewLoader do
+    def load(_project, "implement") do
+      Hancho.Workflow.Definition.new(%{
+        name: "implement",
+        version: 1,
+        steps: [
+          %{
+            name: "implement",
+            action: "Hancho.Actions.Implement",
+            params: %{"provider" => "grok", "timeout_ms" => 1_800_000}
+          },
+          %{
+            name: "verify",
+            action: "Hancho.Actions.Verify",
+            params: %{"timeout_ms" => 600_000}
+          }
+        ]
+      })
+    end
+  end
+
   defmodule MismatchReconciler do
     def initial(project, _options) do
       {:ok, %{repository: project.root, branch: "main", head: "head-0", worktrees: []}}
@@ -256,10 +277,26 @@ defmodule Hancho.QueueTest do
 
     assert {:ok, preview} =
              QueueRunner.preview(project, "implement", "beadwork-ready", 1,
-               beadwork: ContainerReadyBeadwork
+               beadwork: ContainerReadyBeadwork,
+               reconciler: Reconciler,
+               loader: PreviewLoader
              )
 
     assert preview.issues == [%{"id" => "task-next", "status" => "open"}]
+
+    assert preview.repository == %{
+             branch: "main",
+             head: "head-0",
+             clean: true,
+             worktrees: []
+           }
+
+    assert preview.settings == %{
+             provider: "grok",
+             implementation_timeout_ms: 1_800_000,
+             verification_timeout_ms: 600_000
+           }
+
     refute File.exists?(project.bedrock_path)
   end
 
@@ -268,7 +305,9 @@ defmodule Hancho.QueueTest do
 
     assert {:ok, preview} =
              QueueRunner.preview(project, "implement", "beadwork-ready", 2,
-               beadwork: InsufficientReadyBeadwork
+               beadwork: InsufficientReadyBeadwork,
+               reconciler: Reconciler,
+               loader: PreviewLoader
              )
 
     assert Enum.map(preview.issues, & &1["id"]) == ["task-1", "task-2"]

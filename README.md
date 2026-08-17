@@ -145,12 +145,16 @@ Run an explicit number of ready Beadwork tasks through one workflow:
 ./hancho queue implement --source beadwork-ready --count 5 --verbose
 ```
 
-Preview the exact task selection without writing state, claiming work, creating
-a worktree, or calling an agent:
+Preview the exact task selection and run read-only repository reconciliation
+without writing state, claiming work, creating a worktree, or calling an agent:
 
 ```sh
 ./hancho queue implement --source beadwork-ready --count 1 --dry-run
 ```
+
+The preview reports the branch, commit, clean status, retained worktree count,
+provider, and implementation and verification timeouts. A repository or
+worktree mismatch stops the preview before a live run can start.
 
 If `bw ready` returns fewer tasks than the requested count, Hancho derives ready
 tasks from `bw list --all`. A task is ready when it is open or in progress and

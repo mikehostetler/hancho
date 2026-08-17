@@ -46,7 +46,13 @@ defmodule Hancho.CLITest do
        %{
          workflow: "implement",
          source: "beadwork-ready",
-         issues: [%{"id" => "task-1", "title" => "First task", "status" => "open"}]
+         issues: [%{"id" => "task-1", "title" => "First task", "status" => "open"}],
+         repository: %{branch: "main", head: "abc123", clean: true, worktrees: ["retained"]},
+         settings: %{
+           provider: "grok",
+           implementation_timeout_ms: 1_800_000,
+           verification_timeout_ms: 600_000
+         }
        }}
     end
   end
@@ -158,6 +164,10 @@ defmodule Hancho.CLITest do
 
     assert output ==
              "Dry run: implement selected 1 task from beadwork-ready.\n" <>
+               "Repository: main at abc123 (clean)\n" <>
+               "Retained worktrees: 1\n" <>
+               "Provider: grok\n" <>
+               "Timeouts: implement 1800000 ms, verify 600000 ms\n" <>
                "1. task-1 — First task\n"
 
     assert_received {:queue_preview, project, false}
