@@ -1,7 +1,9 @@
 {
   "assignee": "",
   "blocked_by": [],
-  "blocks": [],
+  "blocks": [
+    "hancho-jd4.2"
+  ],
   "created": "2026-08-17T00:09:34Z",
   "description": "Add validated logging options, safe local paths, a stable normalized event model, and dot-delimited configuration values.",
   "id": "hancho-jd4.1",
