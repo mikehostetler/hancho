@@ -4,7 +4,8 @@
   "blocks": [
     "hancho-q4k.2",
     "hancho-q4k.3",
-    "hancho-q4k.4"
+    "hancho-q4k.4",
+    "hancho-q4k.5"
   ],
   "created": "2026-08-17T15:51:19Z",
   "description": "Add typed durable run, step, queue, item, lease, and attempt state. Enforce legal transitions. Add one repository factory lease, stale-owner detection, interruption recovery, phase-aware queue resume, and atomic run/step failure transitions.",

@@ -1,6 +1,8 @@
 {
   "assignee": "",
-  "blocked_by": [],
+  "blocked_by": [
+    "hancho-q4k.1"
+  ],
   "blocks": [],
   "created": "2026-08-17T15:51:19Z",
   "description": "Add bounded command capture for verification. Remove audit callbacks from state correctness, provide durable audit outbox behavior, keep one stable event sequence, and report log sync failures.",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "Bound output and harden audit delivery",
   "type": "task",
-  "updated_at": "2026-08-17T15:51:19Z"
+  "updated_at": "2026-08-17T15:51:28Z"
 }
