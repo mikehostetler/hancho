@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T12:40:11Z",
+  "description": "Add a Hancho-local Jido.Harness adapter for tests and exercise a complete implementation workflow through the real Hancho.Harness and Jido.Harness run lifecycle without a live CLI provider.",
+  "id": "hancho-ym0",
+  "labels": [],
+  "priority": 1,
+  "status": "open",
+  "title": "Add deterministic Jido Harness integration coverage",
+  "type": "task",
+  "updated_at": "2026-08-17T12:40:11Z"
+}
