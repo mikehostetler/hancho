@@ -6,14 +6,16 @@
   "blocks": [
     "hancho-q4k.6"
   ],
+  "closed_at": "2026-08-17T16:28:27Z",
+  "close_reason": "Implemented in c7d110b",
   "created": "2026-08-17T15:51:19Z",
   "description": "Add bounded command capture for verification. Remove audit callbacks from state correctness, provide durable audit outbox behavior, keep one stable event sequence, and report log sync failures.",
   "id": "hancho-q4k.5",
   "labels": [],
   "parent": "hancho-q4k",
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Bound output and harden audit delivery",
   "type": "task",
-  "updated_at": "2026-08-17T16:23:12Z"
+  "updated_at": "2026-08-17T16:28:27Z"
 }
