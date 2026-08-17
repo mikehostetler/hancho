@@ -3,7 +3,9 @@
   "blocked_by": [
     "hancho-jd4.1"
   ],
-  "blocks": [],
+  "blocks": [
+    "hancho-jd4.3"
+  ],
   "created": "2026-08-17T00:09:34Z",
   "description": "Add a synchronous activity log API using OTP logger_std_h for filtering, file output, synchronization, console routing, and rotation.",
   "id": "hancho-jd4.2",

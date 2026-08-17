@@ -1,6 +1,8 @@
 {
   "assignee": "",
-  "blocked_by": [],
+  "blocked_by": [
+    "hancho-jd4.2"
+  ],
   "blocks": [],
   "created": "2026-08-17T00:09:34Z",
   "description": "Add capture sinks, tests for durable JSONL and text output, rotation and disabled logging, escript validation, and documentation.",
