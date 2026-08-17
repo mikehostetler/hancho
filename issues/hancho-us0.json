@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
   "created": "2026-08-17T23:33:27Z",
@@ -7,8 +7,8 @@
   "id": "hancho-us0",
   "labels": [],
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "Fix workflow recovery safety defects",
   "type": "task",
-  "updated_at": "2026-08-17T23:33:27Z"
+  "updated_at": "2026-08-17T23:33:33Z"
 }
