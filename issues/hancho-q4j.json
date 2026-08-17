@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T17:28:00Z",
+  "description": "Burn-in run queue-1786986637270-wizczI_4 passed dry-run with a Land step that omitted required branch. In the production escript, the action module was not loaded, so Compiler.validate_action_params/2 skipped schema validation. Ensure registered action modules load before schema inspection, add regression coverage for an unloaded action, and confirm the dry-run rejects the old llmux workflow before state mutation.",
+  "id": "hancho-q4j",
+  "labels": [],
+  "priority": 1,
+  "status": "open",
+  "title": "Compile schemas for unloaded workflow actions",
+  "type": "task",
+  "updated_at": "2026-08-17T17:28:00Z"
+}
