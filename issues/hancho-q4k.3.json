@@ -3,7 +3,9 @@
   "blocked_by": [
     "hancho-q4k.1"
   ],
-  "blocks": [],
+  "blocks": [
+    "hancho-q4k.6"
+  ],
   "created": "2026-08-17T15:51:19Z",
   "description": "Separate runtime, idle, await, cancellation, cleanup, and outer action budgets. Cancel and await detached Harness runs on all error paths. Persist attempt identity and repository-local journal data.",
   "id": "hancho-q4k.3",
