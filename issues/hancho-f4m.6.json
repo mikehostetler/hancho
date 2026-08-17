@@ -2,14 +2,15 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T14:30:58Z",
   "created": "2026-08-17T14:25:02Z",
   "description": "Compare implementation changes with Allowed Scope before commit and stop on unexpected paths.",
   "id": "hancho-f4m.6",
   "labels": [],
   "parent": "hancho-f4m",
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Validate Beadwork allowed scope",
   "type": "task",
-  "updated_at": "2026-08-17T14:27:26Z"
+  "updated_at": "2026-08-17T14:30:58Z"
 }
