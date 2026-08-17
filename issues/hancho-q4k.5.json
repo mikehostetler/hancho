@@ -3,7 +3,9 @@
   "blocked_by": [
     "hancho-q4k.1"
   ],
-  "blocks": [],
+  "blocks": [
+    "hancho-q4k.6"
+  ],
   "created": "2026-08-17T15:51:19Z",
   "description": "Add bounded command capture for verification. Remove audit callbacks from state correctness, provide durable audit outbox behavior, keep one stable event sequence, and report log sync failures.",
   "id": "hancho-q4k.5",
