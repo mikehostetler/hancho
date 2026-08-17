@@ -6,9 +6,15 @@
   "description": "Remove Exqlite, sqlite3 integration, and native SQLite packaging. Add bedrock from its GitHub repository and persist workflow run and step state in a repository-local Bedrock cluster under .hancho.",
   "id": "hancho-i81",
   "labels": [],
+  "comments": [
+    {
+      "text": "Replaced Exqlite and SQLite packaging with a repository-local Bedrock cluster in .hancho/bedrock. Added transactional run and step storage, an explicit durability flush, cross-process persistence coverage, and a built-escript reopen test. mix check passes: 68 tests and 78.32% coverage.",
+      "timestamp": "2026-08-17T02:51:15Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "Replace SQLite with Bedrock state storage",
   "type": "task",
-  "updated_at": "2026-08-17T02:18:14Z"
+  "updated_at": "2026-08-17T02:51:15Z"
 }
