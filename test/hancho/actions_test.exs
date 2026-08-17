@@ -22,6 +22,25 @@ defmodule Hancho.ActionsTest do
     end
   end
 
+  defmodule ClosedBlockerBeadwork do
+    def show("hancho-123", _options) do
+      {:ok,
+       %{
+         "id" => "hancho-123",
+         "type" => "task",
+         "status" => "open",
+         "blocked_by" => ["hancho-122"]
+       }}
+    end
+
+    def show("hancho-122", _options), do: {:ok, %{"id" => "hancho-122", "status" => "closed"}}
+  end
+
+  defmodule OpenBlockerBeadwork do
+    def show("hancho-123", options), do: ClosedBlockerBeadwork.show("hancho-123", options)
+    def show("hancho-122", _options), do: {:ok, %{"id" => "hancho-122", "status" => "open"}}
+  end
+
   defmodule Harness do
     def run(:codex, prompt, options) do
       if prompt =~ "hancho-123" and
@@ -64,6 +83,26 @@ defmodule Hancho.ActionsTest do
     assert result.baseline == "abc123"
     assert result.branch == "main"
     assert result.issue["id"] == "hancho-123"
+  end
+
+  test "accepts closed blocker references and rejects open blockers" do
+    input = %{repo_path: "/repo", issue_id: "hancho-123"}
+
+    assert {:ok, _result} =
+             Jido.Exec.run(
+               Actions.Preflight,
+               input,
+               %{services: %{git: PreflightGit, beadwork: ClosedBlockerBeadwork}}
+             )
+
+    assert {:error, error} =
+             Jido.Exec.run(
+               Actions.Preflight,
+               input,
+               %{services: %{git: PreflightGit, beadwork: OpenBlockerBeadwork}}
+             )
+
+    assert Exception.message(error) =~ "blocked by hancho-122"
   end
 
   test "calls Jido.Harness with an approved provider and isolated worktree" do
