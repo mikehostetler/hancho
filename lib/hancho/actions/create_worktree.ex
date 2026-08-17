@@ -12,6 +12,7 @@ defmodule Hancho.Actions.CreateWorktree do
       })
 
   alias Hancho.Actions.Context
+  alias Hancho.Workflow.Effect
 
   @impl true
   def run(%{repo_path: repository, baseline: baseline, run_id: run_id}, context) do
@@ -19,13 +20,37 @@ defmodule Hancho.Actions.CreateWorktree do
 
     if Regex.match?(~r/^[A-Za-z0-9_-]+$/, run_id) do
       path = Path.join([repository, ".hancho", "worktrees", run_id])
+      receipt = %{worktree_path: path, baseline: baseline}
 
-      with :ok <- File.mkdir_p(Path.dirname(path)),
-           {:ok, :done} <- git.create_worktree(repository, path, baseline) do
-        {:ok, %{worktree_path: path, baseline: baseline}}
-      end
+      Effect.run(
+        context,
+        "create",
+        "git.worktree.create",
+        %{repository: repository, path: path, baseline: baseline},
+        fn -> reconcile(git, path, baseline, receipt) end,
+        fn -> create(git, repository, path, baseline, receipt) end
+      )
     else
       {:error, "The workflow run ID is not safe for a path."}
+    end
+  end
+
+  defp reconcile(git, path, baseline, receipt) do
+    if File.exists?(path) do
+      case git.head(working_dir: path) do
+        {:ok, ^baseline} -> {:ok, receipt}
+        {:ok, actual} -> {:error, {:worktree_head_changed, baseline, actual}}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      :not_applied
+    end
+  end
+
+  defp create(git, repository, path, baseline, receipt) do
+    with :ok <- File.mkdir_p(Path.dirname(path)),
+         {:ok, :done} <- git.create_worktree(repository, path, baseline) do
+      {:ok, receipt}
     end
   end
 end

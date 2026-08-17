@@ -11,17 +11,30 @@ defmodule Hancho.Actions.ClaimIssue do
       })
 
   alias Hancho.Actions.Context
+  alias Hancho.Workflow.Effect
 
   @impl true
   def run(%{repo_path: repository, issue: issue}, context) do
     beadwork = Context.service(context, :beadwork, Hancho.Beadwork)
 
-    case issue["status"] || issue[:status] do
-      "in_progress" -> {:ok, %{issue: issue}}
-      :in_progress -> {:ok, %{issue: issue}}
-      "open" -> start(beadwork, issue, repository)
-      :open -> start(beadwork, issue, repository)
-      _status -> {:error, "The Beadwork task cannot be claimed."}
+    issue_id = issue["id"] || issue[:id]
+
+    Effect.run(
+      context,
+      "claim",
+      "beadwork.start",
+      %{repository: repository, issue_id: issue_id},
+      fn -> reconcile(beadwork, issue_id, repository) end,
+      fn -> start(beadwork, issue, repository) end
+    )
+  end
+
+  defp reconcile(beadwork, issue_id, repository) do
+    case beadwork.show(issue_id, working_dir: repository) do
+      {:ok, %{"status" => "in_progress"} = issue} -> {:ok, %{issue: issue}}
+      {:ok, %{"status" => "open"}} -> :not_applied
+      {:ok, _issue} -> {:error, "The Beadwork task cannot be claimed."}
+      {:error, reason} -> {:error, reason}
     end
   end
 

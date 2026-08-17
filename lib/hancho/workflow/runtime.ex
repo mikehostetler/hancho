@@ -137,7 +137,13 @@ defmodule Hancho.Workflow.Runtime do
       run_id: data.run_id,
       step: step.name,
       log: data.log,
-      services: data.services
+      services: data.services,
+      effect_store: %{
+        api: data.store_api,
+        store: data.store,
+        run_id: data.run_id,
+        step_position: data.index
+      }
     }
   end
 

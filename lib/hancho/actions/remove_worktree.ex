@@ -11,6 +11,7 @@ defmodule Hancho.Actions.RemoveWorktree do
       })
 
   alias Hancho.Actions.Context
+  alias Hancho.Workflow.Effect
 
   @impl true
   def run(params, context) do
@@ -21,13 +22,26 @@ defmodule Hancho.Actions.RemoveWorktree do
 
     case Path.safe_relative(relative, root) do
       {:ok, relative} when relative != "." ->
-        case git.remove_worktree(params.repo_path, path) do
-          {:ok, :done} -> {:ok, %{worktree_path: path, removed: true}}
-          {:error, reason} -> {:error, reason}
-        end
+        receipt = %{worktree_path: path, removed: true}
+
+        Effect.run(
+          context,
+          "remove",
+          "git.worktree.remove",
+          %{repository: params.repo_path, path: path},
+          fn -> if(File.exists?(path), do: :not_applied, else: {:ok, receipt}) end,
+          fn -> remove(git, params.repo_path, path, receipt) end
+        )
 
       _other ->
         {:error, "Hancho refused to remove a path outside its worktree folder."}
+    end
+  end
+
+  defp remove(git, repository, path, receipt) do
+    case git.remove_worktree(repository, path) do
+      {:ok, :done} -> {:ok, receipt}
+      {:error, reason} -> {:error, reason}
     end
   end
 end

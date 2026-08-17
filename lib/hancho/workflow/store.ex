@@ -3,7 +3,7 @@ defmodule Hancho.Workflow.Store do
 
   alias Hancho.Log.Event
   alias Hancho.State.{Bedrock, Repo}
-  alias Hancho.Workflow.{QueueRecord, RunRecord, StepRecord}
+  alias Hancho.Workflow.{EffectRecord, QueueRecord, RunRecord, StepRecord}
 
   @prefix "hancho/workflow/runs/"
   @queue_prefix "hancho/workflow/queues/"
@@ -239,6 +239,105 @@ defmodule Hancho.Workflow.Store do
           else
             {:error, reason} -> Repo.rollback(reason)
           end
+      end
+    end)
+  end
+
+  @spec begin_effect(String.t(), String.t(), non_neg_integer(), String.t(), String.t(), map()) ::
+          {:ok, map()} | {:error, term()}
+  def begin_effect(store, run_id, position, key, kind, intent) do
+    transact(store, fn ->
+      effect_key = effect_key(run_id, position, key)
+      intent_json = encode!(intent)
+
+      with {:ok, run} <- get_run(run_key(run_id)),
+           :ok <- status_in(run, ["running"], :run_not_running),
+           {:ok, step} <- get_step(step_key(run_id, position)),
+           :ok <- status_in(step, ["running"], :step_not_running) do
+        case Repo.get(effect_key) do
+          nil ->
+            effect = %{
+              "record_version" => 1,
+              "transition_version" => 0,
+              "run_id" => run_id,
+              "step_position" => position,
+              "key" => key,
+              "kind" => kind,
+              "status" => "intended",
+              "intent_json" => intent_json,
+              "receipt_json" => nil,
+              "attempt" => 1,
+              "started_at" => now(),
+              "applied_at" => nil,
+              "error_json" => nil
+            }
+
+            put_effect(effect_key, effect)
+            {:ok, effect}
+
+          encoded ->
+            with {:ok, effect} <- decode_record(encoded, EffectRecord),
+                 :ok <- same_effect(effect, kind, intent_json) do
+              retried =
+                effect
+                |> Map.update!("attempt", &(&1 + 1))
+                |> Map.put("error_json", nil)
+                |> bump()
+
+              put_effect(effect_key, retried)
+              {:ok, retried}
+            else
+              {:error, reason} -> Repo.rollback(reason)
+            end
+        end
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @spec complete_effect(String.t(), String.t(), non_neg_integer(), String.t(), map()) ::
+          :ok | {:error, term()}
+  def complete_effect(store, run_id, position, key, receipt) do
+    transact(store, fn ->
+      effect_key = effect_key(run_id, position, key)
+      receipt_json = encode!(receipt)
+
+      with {:ok, effect} <- get_effect(effect_key) do
+        case effect do
+          %{"status" => "intended"} ->
+            applied =
+              effect
+              |> Map.put("status", "applied")
+              |> Map.put("receipt_json", receipt_json)
+              |> Map.put("applied_at", now())
+              |> Map.put("error_json", nil)
+
+            put_effect(effect_key, bump(applied))
+
+          %{"status" => "applied", "receipt_json" => ^receipt_json} ->
+            :ok
+
+          %{"status" => "applied"} ->
+            Repo.rollback(:effect_receipt_changed)
+        end
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @spec fail_effect(String.t(), String.t(), non_neg_integer(), String.t(), term()) ::
+          :ok | {:error, term()}
+  def fail_effect(store, run_id, position, key, error) do
+    transact(store, fn ->
+      effect_key = effect_key(run_id, position, key)
+
+      with {:ok, effect} <- get_effect(effect_key),
+           :ok <- status_in(effect, ["intended"], :effect_already_applied) do
+        put_effect(effect_key, effect |> Map.put("error_json", encode!(error)) |> bump())
+      else
+        {:error, reason} -> Repo.rollback(reason)
       end
     end)
   end
@@ -499,6 +598,7 @@ defmodule Hancho.Workflow.Store do
   defp get_run(key), do: get_record(key, RunRecord)
   defp get_step(key), do: get_record(key, StepRecord)
   defp get_queue(key), do: get_record(key, QueueRecord)
+  defp get_effect(key), do: get_record(key, EffectRecord)
 
   defp get_record(key, module) do
     case Repo.get(key) do
@@ -532,6 +632,14 @@ defmodule Hancho.Workflow.Store do
     step_prefix(run_id) <> String.pad_leading(Integer.to_string(position), 12, "0")
   end
 
+  defp effect_key(run_id, position, key) do
+    @prefix <>
+      encoded_id(run_id) <>
+      "/effects/" <>
+      String.pad_leading(Integer.to_string(position), 12, "0") <>
+      "/" <> encoded_id(key)
+  end
+
   defp encoded_id(run_id), do: Base.url_encode64(run_id, padding: false)
 
   defp queue_position(%{"status" => "running", "current_position" => position}, position),
@@ -559,6 +667,9 @@ defmodule Hancho.Workflow.Store do
   defp active_queue_available(queue_id, queue_id), do: :ok
   defp active_queue_available(active, _queue_id), do: {:error, {:queue_already_running, active}}
 
+  defp same_effect(%{"kind" => kind, "intent_json" => intent_json}, kind, intent_json), do: :ok
+  defp same_effect(_effect, _kind, _intent_json), do: {:error, :effect_intent_changed}
+
   defp put_queue_item(queue, position, item) do
     Map.update!(queue, "items", &List.replace_at(&1, position, item))
   end
@@ -575,6 +686,7 @@ defmodule Hancho.Workflow.Store do
   defp put_run(key, value), do: put_record(key, value, RunRecord)
   defp put_step(key, value), do: put_record(key, value, StepRecord)
   defp put_queue(key, value), do: put_record(key, value, QueueRecord)
+  defp put_effect(key, value), do: put_record(key, value, EffectRecord)
 
   defp put_record(key, value, module) do
     case module.new(value) do

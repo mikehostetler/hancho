@@ -389,7 +389,12 @@ defmodule Hancho.ActionsTest do
     assert {:ok, landed} =
              Jido.Exec.run(
                Actions.Land,
-               %{repo_path: repository, baseline: baseline, commit: committed.commit},
+               %{
+                 repo_path: repository,
+                 branch: "main",
+                 baseline: baseline,
+                 commit: committed.commit
+               },
                context
              )
 
@@ -405,6 +410,27 @@ defmodule Hancho.ActionsTest do
 
     assert removed.removed
     refute File.exists?(created.worktree_path)
+  end
+
+  test "refuses to land on a branch other than the preflight branch" do
+    repository = temporary_repository()
+    {:ok, baseline} = Hancho.Git.head(working_dir: repository)
+    {_output, 0} = System.cmd("git", ["-C", repository, "switch", "-c", "other"])
+
+    assert {:error, error} =
+             Jido.Exec.run(
+               Actions.Land,
+               %{
+                 repo_path: repository,
+                 branch: "main",
+                 baseline: baseline,
+                 commit: baseline
+               },
+               %{services: %{git: Hancho.Git}},
+               max_retries: 0
+             )
+
+    assert Exception.message(error) =~ "landing branch changed from main to other"
   end
 
   defp temporary_repository do

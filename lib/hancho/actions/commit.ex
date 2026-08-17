@@ -12,6 +12,7 @@ defmodule Hancho.Actions.Commit do
       })
 
   alias Hancho.Actions.Context
+  alias Hancho.Workflow.Effect
 
   @impl true
   def run(params, context) do
@@ -21,15 +22,59 @@ defmodule Hancho.Actions.Commit do
 
     message = "feat: implement #{issue_id}\n\n#{title}\n\nBeadwork-ID: #{issue_id}"
 
-    with {:ok, head} <- git.head(working_dir: params.worktree_path),
-         :ok <- unchanged_head(head, params.baseline),
-         {:ok, status} <- git.status(working_dir: params.worktree_path),
+    Effect.run(
+      context,
+      "commit",
+      "git.commit",
+      %{
+        worktree_path: params.worktree_path,
+        baseline: params.baseline,
+        issue_id: issue_id,
+        message: message
+      },
+      fn -> reconcile(git, params.worktree_path, params.baseline, issue_id) end,
+      fn -> commit(git, params.worktree_path, params.baseline, issue_id, message) end
+    )
+  end
+
+  defp reconcile(git, worktree, baseline, issue_id) do
+    with {:ok, head} <- git.head(working_dir: worktree) do
+      if head == baseline do
+        :not_applied
+      else
+        with {:ok, status} <- git.status(working_dir: worktree),
+             :ok <- clean(status),
+             {:ok, shown} <- git.show(head, working_dir: worktree),
+             :ok <- expected_commit(shown, issue_id) do
+          {:ok, %{commit: head, issue_id: issue_id}}
+        end
+      end
+    end
+  end
+
+  defp commit(git, worktree, baseline, issue_id, message) do
+    with {:ok, head} <- git.head(working_dir: worktree),
+         :ok <- unchanged_head(head, baseline),
+         {:ok, status} <- git.status(working_dir: worktree),
          :ok <- has_changes(status),
-         {:ok, :done} <- git.add_all(params.worktree_path),
-         {:ok, commit} <- git.commit(params.worktree_path, message) do
+         {:ok, :done} <- git.add_all(worktree),
+         {:ok, commit} <- git.commit(worktree, message) do
       {:ok, %{commit: commit.full_hash, issue_id: issue_id}}
     end
   end
+
+  defp clean(%Git.Status{entries: []}), do: :ok
+  defp clean(_status), do: {:error, "The recovered commit worktree has new changes."}
+
+  defp expected_commit(%Git.ShowResult{commit: commit}, issue_id) when not is_nil(commit) do
+    contents = commit.subject <> "\n" <> commit.body
+
+    if String.contains?(contents, "Beadwork-ID: #{issue_id}"),
+      do: :ok,
+      else: {:error, "The recovered commit does not belong to this Beadwork task."}
+  end
+
+  defp expected_commit(_shown, _issue_id), do: {:error, "The recovered commit is invalid."}
 
   defp unchanged_head(head, head), do: :ok
 
