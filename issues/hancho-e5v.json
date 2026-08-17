@@ -2,6 +2,8 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T20:02:47Z",
+  "close_reason": "Implemented and verified bounded durable workflow repair loops",
   "created": "2026-08-17T19:46:05Z",
   "description": "Add durable on_error policies that use the configured coding provider to repair approved gate failures in the same workspace, retry the failed gate within a strict attempt limit, and record repair evidence.",
   "id": "hancho-e5v",
@@ -13,8 +15,8 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Add bounded workflow repair loops",
   "type": "task",
-  "updated_at": "2026-08-17T20:02:36Z"
+  "updated_at": "2026-08-17T20:02:47Z"
 }
