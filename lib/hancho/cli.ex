@@ -302,6 +302,8 @@ defmodule Hancho.CLI do
       "ERROR: Workflow #{result.workflow} stopped at #{result.current_step}: #{format_error(result.error)}"
     )
 
+    if result.forensic_report, do: IO.puts(:stderr, "Forensic report: #{result.forensic_report}")
+
     1
   end
 
@@ -312,6 +314,8 @@ defmodule Hancho.CLI do
       :stderr,
       "ERROR: Queue #{result.queue_id} stopped at #{result.current_issue}: #{format_error(result.error)}"
     )
+
+    if result.forensic_report, do: IO.puts(:stderr, "Forensic report: #{result.forensic_report}")
 
     1
   end
@@ -328,6 +332,7 @@ defmodule Hancho.CLI do
     print_verification(report.verification)
     IO.puts("Commit: #{report.commit || "none"}")
     IO.puts("Retained worktree: #{report.retained_worktree || "none"}")
+    IO.puts("Forensic report: #{report.forensic_report || "none"}")
     if report.failure, do: IO.puts("Failure: #{format_error(report.failure)}")
     IO.puts("Steps:")
 

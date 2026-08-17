@@ -34,10 +34,10 @@ Initialize Hancho in a Git repository:
 ./hancho init
 ```
 
-This creates `.hancho/config.toml`, `.hancho/logs/`, `.hancho/prompts/`,
-`.hancho/workflows/`, and `.hancho/worktrees/`. Runtime files also include the
-factory lease at `.hancho/factory.lock` and Harness operation journals in
-`.hancho/harness/`. It installs the first workflow at
+This creates `.hancho/config.toml`, `.hancho/forensics/`, `.hancho/logs/`,
+`.hancho/prompts/`, `.hancho/workflows/`, and `.hancho/worktrees/`. Runtime files
+also include the factory lease at `.hancho/factory.lock` and Harness operation
+journals in `.hancho/harness/`. It installs the first workflow at
 `.hancho/workflows/implement.yaml` and its editable agent prompt at
 `.hancho/prompts/implement.md`. The complete `.hancho/` folder stays local and
 ignored by Git. Initialization does not replace an existing workflow or prompt.
@@ -279,7 +279,16 @@ Read one durable run without starting or changing it:
 
 The report shows the workflow status, start and finish times, step durations,
 provider and Harness run IDs, verification summary, landed or created commit,
-retained worktree, and failure data.
+retained worktree, failure data, and the forensic report path when one exists.
+
+When a workflow stops, Hancho writes a private JSON report to
+`.hancho/forensics/runs/RUN_ID.json`. When a queue stops, Hancho writes a second
+report to `.hancho/forensics/queues/QUEUE_ID.json`. These reports include the
+primary error, a separate reconciliation error when applicable, Git status,
+workflow artifacts, cleanup results, and links between the queue and child run.
+Report files use mode `0600`, and their directories use mode `0700`. Reports can
+contain source paths and agent output. Keep the complete `.hancho/` directory
+private.
 
 During implementation, Hancho records an `implement.progress` event every 30
 seconds by default. It records the Harness run ID, elapsed time, observed event
@@ -321,6 +330,12 @@ worktree:
 
 The clean command keeps the worktree, Git registration, source changes, and
 all other diagnostic files.
+
+Hancho also runs this safe cleanup after a stopped worktree workflow. It removes
+only untracked `_build`, `deps`, and `cover` directories. It does not remove a
+directory when Git tracks a file below it. The cleanup result and reclaimed byte
+count are in the run forensic report. An in-place workflow keeps these generated
+directories because they belong to the main repository workspace.
 
 ## Factory activity logs
 

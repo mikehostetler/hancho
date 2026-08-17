@@ -36,6 +36,7 @@ defmodule Hancho.InitTest do
            }
 
     assert File.dir?(Path.join(repository, ".hancho/logs"))
+    assert File.dir?(Path.join(repository, ".hancho/forensics"))
     assert File.dir?(Path.join(repository, ".hancho/prompts"))
     assert File.dir?(Path.join(repository, ".hancho/workflows"))
     assert File.dir?(Path.join(repository, ".hancho/worktrees"))

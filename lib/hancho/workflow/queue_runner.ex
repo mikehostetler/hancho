@@ -2,6 +2,7 @@ defmodule Hancho.Workflow.QueueRunner do
   @moduledoc "Runs a durable workflow queue serially in the foreground."
 
   alias Hancho.Beadwork.Issue
+  alias Hancho.Forensics
 
   alias Hancho.Workflow.{
     Compiler,
@@ -380,13 +381,7 @@ defmodule Hancho.Workflow.QueueRunner do
 
     with {:ok, queue} <- store_api.fetch_queue(store, queue_id),
          {:ok, summary} <-
-           reconcile_stopped(
-             reconciler,
-             project,
-             queue,
-             result.artifacts,
-             reconcile_options(options)
-           ),
+           reconciler.after_run(project, queue, result.artifacts, reconcile_options(options)),
          :ok <-
            QueueReporter.reconciliation(
              project,
@@ -454,43 +449,90 @@ defmodule Hancho.Workflow.QueueRunner do
     store_api = Keyword.get(options, :store_api, Store)
     reconciler = Keyword.get(options, :reconciler, QueueReconciler)
 
-    with {:ok, queue} <- store_api.fetch_queue(store, queue_id),
-         {:ok, summary} <-
-           reconciler.after_run(project, queue, result.artifacts, reconcile_options(options)),
-         :ok <-
-           QueueReporter.reconciliation(
-             project,
-             queue_id,
-             "after",
-             position,
-             item,
-             summary,
-             options
-           ) do
-      stop_for_error(
-        project,
-        workflow,
-        queue_id,
-        items,
-        position,
-        item,
-        %{code: "workflow_stopped", step: result.current_step, error: result.error},
-        store,
-        options
-      )
-    else
+    workflow_error = %{
+      code: "workflow_stopped",
+      step: result.current_step,
+      error: result.error,
+      child_forensic_report: result.forensic_report
+    }
+
+    error =
+      case store_api.fetch_queue(store, queue_id) do
+        {:ok, queue} ->
+          case reconcile_stopped(
+                 reconciler,
+                 project,
+                 queue,
+                 result.artifacts,
+                 reconcile_options(options)
+               ) do
+            {:ok, summary} ->
+              :ok =
+                QueueReporter.reconciliation(
+                  project,
+                  queue_id,
+                  "after",
+                  position,
+                  item,
+                  summary,
+                  options
+                )
+
+              workflow_error
+
+            {:error, reason} ->
+              Map.put(workflow_error, :reconciliation, %{
+                status: "failed",
+                error: Hancho.Log.Event.normalize(reason)
+              })
+          end
+
+        {:error, reason} ->
+          Map.put(workflow_error, :queue_state, %{
+            status: "unavailable",
+            error: Hancho.Log.Event.normalize(reason)
+          })
+      end
+
+    stop_for_error(
+      project,
+      workflow,
+      queue_id,
+      items,
+      position,
+      item,
+      error,
+      store,
+      options
+    )
+  end
+
+  defp with_queue_forensics(project, workflow, queue_id, items, position, item, error, options) do
+    forensics = Keyword.get(options, :forensics, Forensics)
+    child_report = error_field(error, :child_forensic_report)
+
+    details = %{
+      queue_id: queue_id,
+      workflow: workflow,
+      issue_id: item.issue_id,
+      child_run_id: item.run_id,
+      position: position,
+      total_count: length(items),
+      error: error,
+      child_forensic_report: child_report
+    }
+
+    case forensics.capture_queue(project, details, options) do
+      {:ok, path} ->
+        put_error_field(error, :forensic_report, path)
+
       {:error, reason} ->
-        stop_for_error(
-          project,
-          workflow,
-          queue_id,
-          items,
-          position,
-          item,
-          reason,
-          store,
-          options
+        Hancho.Log.internal(:warning, "Failed to write queue forensic report",
+          queue_id: queue_id,
+          error: inspect(reason)
         )
+
+        error
     end
   end
 
@@ -506,6 +548,10 @@ defmodule Hancho.Workflow.QueueRunner do
          options
        ) do
     store_api = Keyword.get(options, :store_api, Store)
+
+    error =
+      with_queue_forensics(project, workflow, queue_id, items, position, item, error, options)
+
     event = if out_of_sync?(error), do: "queue.reconciliation_failed", else: "queue.stopped"
 
     message =
@@ -586,7 +632,31 @@ defmodule Hancho.Workflow.QueueRunner do
   defp reconcile_options(options), do: Keyword.take(options, [:git])
 
   defp out_of_sync?(%{code: "filesystem_out_of_sync"}), do: true
+  defp out_of_sync?(%{"code" => "filesystem_out_of_sync"}), do: true
+
+  defp out_of_sync?(error) when is_map(error) do
+    error
+    |> error_field(:reconciliation)
+    |> error_field(:error)
+    |> out_of_sync?()
+  end
+
   defp out_of_sync?(_error), do: false
+
+  defp error_field(nil, _key), do: nil
+
+  defp error_field(error, key) when is_map(error) do
+    Map.get(error, key, Map.get(error, Atom.to_string(key)))
+  end
+
+  defp error_field(_error, _key), do: nil
+
+  defp put_error_field(error, key, value) when is_map(error), do: Map.put(error, key, value)
+
+  defp put_error_field(error, key, value) do
+    %{code: "queue_stopped", error: Hancho.Log.Event.normalize(error)}
+    |> Map.put(key, value)
+  end
 
   defp new_queue_id do
     suffix = :crypto.strong_rand_bytes(6) |> Base.url_encode64(padding: false)

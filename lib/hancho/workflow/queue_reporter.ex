@@ -18,7 +18,8 @@ defmodule Hancho.Workflow.QueueReporter do
         total_count: length(queue["items"]),
         current_issue: if(current, do: current["issue_id"]),
         child_runs: Enum.map(queue["items"], & &1["run_id"]),
-        error: queue["error"]
+        error: queue["error"],
+        forensic_report: forensic_report(queue["error"])
       })
     end
   end
@@ -108,4 +109,10 @@ defmodule Hancho.Workflow.QueueReporter do
       end
     end
   end
+
+  defp forensic_report(error) when is_map(error) do
+    Map.get(error, "forensic_report", Map.get(error, :forensic_report))
+  end
+
+  defp forensic_report(_error), do: nil
 end

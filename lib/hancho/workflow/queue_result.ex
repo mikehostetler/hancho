@@ -11,7 +11,8 @@ defmodule Hancho.Workflow.QueueResult do
               total_count: Zoi.integer() |> Zoi.min(1),
               current_issue: Zoi.string() |> Zoi.nullish(),
               child_runs: Zoi.array(Zoi.string()),
-              error: Zoi.any() |> Zoi.nullish()
+              error: Zoi.any() |> Zoi.nullish(),
+              forensic_report: Zoi.string() |> Zoi.nullish() |> Zoi.default(nil)
             },
             coerce: true
           )

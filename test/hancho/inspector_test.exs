@@ -80,6 +80,7 @@ defmodule Hancho.InspectorTest do
     assert report.verification.exit_status == 0
     assert report.commit == "abc123"
     assert report.retained_worktree == "/repo/.hancho/worktrees/run-inspect"
+    assert report.forensic_report == nil
     assert report.failure == %{"message" => "branch changed"}
     assert Enum.map(report.steps, & &1.duration_ms) == [10_000, 80_000, 15_000, 0, 15_000]
     assert List.last(report.steps).error == "branch changed"

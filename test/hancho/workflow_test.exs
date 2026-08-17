@@ -242,6 +242,11 @@ defmodule Hancho.WorkflowTest do
     assert result.current_step == "second"
     assert result.error =~ "$steps.first.value"
     assert result.cleanup == %{status: "completed", removed: ["_build", "deps"]}
+
+    assert result.forensic_report ==
+             Path.join(project.forensics_path, "runs/run-stopped.json")
+
+    assert File.regular?(result.forensic_report)
     assert_received {:failure_cleanup, project_root, "second"}
     assert project_root == project.root
 

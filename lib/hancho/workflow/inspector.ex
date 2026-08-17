@@ -8,7 +8,7 @@ defmodule Hancho.Workflow.Inspector do
     store_api = Keyword.get(options, :store_api, Store)
 
     with {:ok, store} <- store_api.open(project.bedrock_path) do
-      result = inspect_with_store(store_api, store, run_id)
+      result = inspect_with_store(project, store_api, store, run_id)
 
       case store_api.close(store) do
         :ok -> result
@@ -17,7 +17,7 @@ defmodule Hancho.Workflow.Inspector do
     end
   end
 
-  defp inspect_with_store(store_api, store, run_id) do
+  defp inspect_with_store(project, store_api, store, run_id) do
     with {:ok, run} <- store_api.fetch_run(store, run_id),
          {:ok, steps} <- store_api.list_steps(store, run_id),
          {:ok, outputs} <- Jason.decode(run["outputs_json"]) do
@@ -37,6 +37,7 @@ defmodule Hancho.Workflow.Inspector do
          commit:
            get_in(artifacts, ["landing", "commit"]) || get_in(artifacts, ["commit", "commit"]),
          retained_worktree: retained_worktree(artifacts),
+         forensic_report: forensic_report(project, run_id),
          failure: decode_optional(run["error_json"]),
          steps: Enum.map(steps, &step_report/1)
        }}
@@ -79,6 +80,11 @@ defmodule Hancho.Workflow.Inspector do
       {%{"worktree_path" => path}, nil} -> path
       _other -> nil
     end
+  end
+
+  defp forensic_report(project, run_id) do
+    path = Hancho.Forensics.run_report_path(project, run_id)
+    if File.regular?(path), do: path
   end
 
   defp step_report(step) do

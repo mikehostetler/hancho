@@ -153,6 +153,36 @@ defmodule Hancho.QueueTest do
     end
   end
 
+  defmodule StoppedMismatchReconciler do
+    def initial(project, _options) do
+      {:ok, %{repository: project.root, branch: "main", head: "head-0", worktrees: []}}
+    end
+
+    def before_item(_project, queue, _options) do
+      {:ok, %{branch: "main", head: queue["expected_head"], clean: true, worktrees: []}}
+    end
+
+    def after_run(_project, queue, artifacts, _options) do
+      {:ok,
+       %{
+         branch: "main",
+         head: get_in(artifacts, ["landing", "commit"]) || queue["expected_head"],
+         clean: true,
+         worktrees: []
+       }}
+    end
+
+    def after_stopped_run(_project, _queue, _artifacts, _options) do
+      {:error,
+       %{
+         code: "filesystem_out_of_sync",
+         field: "repository_status",
+         expected: "clean",
+         actual: [%{path: "unexpected.txt", index: "?", working_tree: "?"}]
+       }}
+    end
+  end
+
   defmodule WorkflowRunner do
     def run(_project, "implement", %{"issue_id" => issue_id}, options) do
       send(self(), {:ran, issue_id, options[:run_id]})
@@ -540,6 +570,34 @@ defmodule Hancho.QueueTest do
     assert {:ok, queue} = MemoryStore.fetch_queue(:memory, "queue-mismatch")
     assert queue["status"] == "stopped"
     assert hd(queue["items"])["status"] == "stopped"
+  end
+
+  test "keeps a child workflow error when stopped-run reconciliation also fails" do
+    project = Hancho.Project.new(temporary_directory())
+
+    assert {:ok, result} =
+             QueueRunner.run(project, "implement", "beadwork-ready", 2,
+               beadwork: Beadwork,
+               reconciler: StoppedMismatchReconciler,
+               workflow_runner: StoppingWorkflowRunner,
+               store_api: MemoryStore,
+               queue_id: "queue-double-failure",
+               log: :disabled
+             )
+
+    assert result.status == :stopped
+    assert result.error.code == "workflow_stopped"
+    assert result.error.step == "implement"
+    assert result.error.error == "agent stopped"
+    assert result.error.reconciliation.error["code"] == "filesystem_out_of_sync"
+    assert File.regular?(result.forensic_report)
+
+    report = result.forensic_report |> File.read!() |> Jason.decode!()
+    assert report["queue"]["error"]["code"] == "workflow_stopped"
+    assert report["queue"]["error"]["error"] == "agent stopped"
+
+    assert report["queue"]["error"]["reconciliation"]["error"]["code"] ==
+             "filesystem_out_of_sync"
   end
 
   test "persists queue progress in Bedrock" do

@@ -22,6 +22,7 @@ defmodule Hancho.ProjectTest do
     assert project.config_path == "/work/repo/.hancho/config.toml"
     assert project.logs_path == "/work/repo/.hancho/logs"
     assert project.bedrock_path == "/work/repo/.hancho/bedrock"
+    assert project.forensics_path == "/work/repo/.hancho/forensics"
     assert project.workflows_path == "/work/repo/.hancho/workflows"
     assert project.worktrees_path == "/work/repo/.hancho/worktrees"
 

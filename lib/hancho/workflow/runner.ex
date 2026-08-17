@@ -11,6 +11,8 @@ defmodule Hancho.Workflow.Runner do
     Store
   }
 
+  alias Hancho.Forensics
+
   @spec run(Hancho.Project.t(), String.t(), map(), keyword()) ::
           {:ok, Hancho.Workflow.Result.t()} | {:error, term()}
   def run(project, workflow_name, input, options \\ []) do
@@ -83,7 +85,7 @@ defmodule Hancho.Workflow.Runner do
                  log: log
                }) do
           result = Runtime.run(pid)
-          {:ok, attach_cleanup(project, result, options)}
+          {:ok, attach_failure_evidence(project, result, options)}
         end
       after
         Hancho.Log.close(log)
@@ -135,7 +137,7 @@ defmodule Hancho.Workflow.Runner do
                  artifacts: Hancho.Workflow.Artifacts.from_outputs(definition, outputs)
                }) do
           result = Runtime.run(pid)
-          {:ok, attach_cleanup(project, result, options)}
+          {:ok, attach_failure_evidence(project, result, options)}
         end
       after
         Hancho.Log.close(log)
@@ -205,6 +207,30 @@ defmodule Hancho.Workflow.Runner do
     cleanup_api = Keyword.get(options, :failure_cleanup, FailureCleanup)
     %{result | cleanup: cleanup_api.run(project, result, options)}
   end
+
+  defp attach_failure_evidence(project, result, options) do
+    result = attach_cleanup(project, result, options)
+    attach_forensics(result, project, options)
+  end
+
+  defp attach_forensics(%{status: :stopped} = result, project, options) do
+    forensics = Keyword.get(options, :forensics, Forensics)
+
+    case forensics.capture_run(project, result, options) do
+      {:ok, path} ->
+        %{result | forensic_report: path}
+
+      {:error, reason} ->
+        Hancho.Log.internal(:warning, "Failed to write workflow forensic report",
+          run_id: result.run_id,
+          error: inspect(reason)
+        )
+
+        result
+    end
+  end
+
+  defp attach_forensics(result, _project, _options), do: result
 
   defp sha256(contents),
     do: :crypto.hash(:sha256, contents) |> Base.encode16(case: :lower)

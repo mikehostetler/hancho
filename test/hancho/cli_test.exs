@@ -35,6 +35,20 @@ defmodule Hancho.CLITest do
     end
   end
 
+  defmodule StoppedWorkflowRunner do
+    def run(_project, "implement", _input, _options) do
+      Hancho.Workflow.Result.new(%{
+        run_id: "run-failed",
+        workflow: "implement",
+        status: :stopped,
+        current_step: "validate_scope",
+        outputs: %{},
+        error: %{code: "changes_outside_allowed_scope"},
+        forensic_report: "/repo/.hancho/forensics/runs/run-failed.json"
+      })
+    end
+  end
+
   defmodule QueueRunner do
     def run(project, "implement", "beadwork-ready", 5, options) do
       send(self(), {:queue_input, project, options[:verbose]})
@@ -86,6 +100,22 @@ defmodule Hancho.CLITest do
     end
   end
 
+  defmodule StoppedQueueRunner do
+    def run(_project, "implement", "beadwork-ready", 1, _options) do
+      Hancho.Workflow.QueueResult.new(%{
+        queue_id: "queue-failed",
+        workflow: "implement",
+        status: :stopped,
+        completed_count: 0,
+        total_count: 1,
+        current_issue: "task-1",
+        child_runs: ["queue-failed-001"],
+        error: %{code: "workflow_stopped"},
+        forensic_report: "/repo/.hancho/forensics/queues/queue-failed.json"
+      })
+    end
+  end
+
   defmodule RunInspector do
     def inspect(project, "run-123", _options) do
       send(self(), {:run_inspect, project})
@@ -107,6 +137,7 @@ defmodule Hancho.CLITest do
          verification: nil,
          commit: nil,
          retained_worktree: "/repo/.hancho/worktrees/run-123",
+         forensic_report: "/repo/.hancho/forensics/runs/run-123.json",
          failure: "tests failed",
          steps: [
            %{position: 0, name: "implement", status: "completed", duration_ms: 55_000},
@@ -213,6 +244,35 @@ defmodule Hancho.CLITest do
     assert project.bedrock_path == "/repo/.hancho/bedrock"
   end
 
+  test "prints the forensic report for a stopped workflow" do
+    output =
+      capture_io(:stderr, fn ->
+        assert Hancho.CLI.run(["run", "implement", "hancho-123"],
+                 cwd: "/repo",
+                 project_api: ProjectAPI,
+                 workflow_runner: StoppedWorkflowRunner
+               ) == 1
+      end)
+
+    assert output =~ "ERROR: Workflow implement stopped at validate_scope"
+    assert output =~ "Forensic report: /repo/.hancho/forensics/runs/run-failed.json\n"
+  end
+
+  test "prints the forensic report for a stopped queue" do
+    output =
+      capture_io(:stderr, fn ->
+        assert Hancho.CLI.run(
+                 ["queue", "implement", "--source", "beadwork-ready", "--count", "1"],
+                 cwd: "/repo",
+                 project_api: ProjectAPI,
+                 queue_runner: StoppedQueueRunner
+               ) == 1
+      end)
+
+    assert output =~ "ERROR: Queue queue-failed stopped at task-1"
+    assert output =~ "Forensic report: /repo/.hancho/forensics/queues/queue-failed.json\n"
+  end
+
   test "runs one workflow with verbose provider output enabled" do
     output =
       capture_io(fn ->
@@ -244,6 +304,7 @@ defmodule Hancho.CLITest do
     assert output =~ "Provider: grok completed (harness-1)\n"
     assert output =~ "Verification: not started\n"
     assert output =~ "Retained worktree: /repo/.hancho/worktrees/run-123\n"
+    assert output =~ "Forensic report: /repo/.hancho/forensics/runs/run-123.json\n"
     assert output =~ "2. verify: stopped (5000 ms)\n"
     assert_received {:run_inspect, project}
     assert project.root == "/repo"
