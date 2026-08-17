@@ -13,8 +13,7 @@ defmodule Hancho.Workflow.QueueRunner do
     reconciler = Keyword.get(options, :reconciler, QueueReconciler)
 
     with :ok <- validate_request(source, count),
-         {:ok, ready} <- beadwork.ready(working_dir: project.root),
-         {:ok, issues} <- select_issues(ready, count),
+         {:ok, issues} <- ready_issues(beadwork, project.root, count),
          queue_id = Keyword.get_lazy(options, :queue_id, &new_queue_id/0),
          items = queue_items(queue_id, issues),
          {:ok, repository_state} <- reconciler.initial(project, reconcile_options(options)),
@@ -35,6 +34,22 @@ defmodule Hancho.Workflow.QueueRunner do
         :ok -> result
         {:error, reason} -> {:error, {:state_flush_failed, reason}}
       end
+    end
+  end
+
+  @spec preview(Hancho.Project.t(), String.t(), String.t(), pos_integer(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def preview(project, workflow, source, count, options \\ []) do
+    beadwork = Keyword.get(options, :beadwork, Hancho.Beadwork)
+
+    with :ok <- validate_request(source, count),
+         {:ok, issues} <- ready_issues(beadwork, project.root, count) do
+      {:ok,
+       %{
+         workflow: workflow,
+         source: source,
+         issues: Enum.map(issues, &Map.take(&1, ["id", "title", "status"]))
+       }}
     end
   end
 
@@ -363,9 +378,51 @@ defmodule Hancho.Workflow.QueueRunner do
     end
   end
 
+  defp ready_issues(beadwork, repository, count) do
+    with {:ok, ready} <- beadwork.ready(working_dir: repository),
+         {:ok, candidates} <- task_candidates(beadwork, repository, ready) do
+      select_issues(candidates, count)
+    end
+  end
+
+  defp task_candidates(beadwork, repository, ready) do
+    case Enum.filter(ready, &ready_task?/1) do
+      [] -> ready_tasks_from_all(beadwork, repository)
+      tasks -> {:ok, tasks}
+    end
+  end
+
+  defp ready_tasks_from_all(beadwork, repository) do
+    with {:ok, issues} <- beadwork.list_all(working_dir: repository) do
+      statuses = Map.new(issues, &{&1["id"], &1["status"]})
+
+      ready =
+        issues
+        |> Enum.filter(&ready_task_from_all?(&1, statuses))
+        |> Enum.sort_by(&queue_order/1)
+
+      {:ok, ready}
+    end
+  end
+
+  defp ready_task_from_all?(issue, statuses) do
+    ready_task?(issue) and
+      Enum.all?(issue["blocked_by"] || [], &(Map.get(statuses, &1) == "closed"))
+  end
+
+  defp queue_order(issue) do
+    ordinal =
+      case Regex.run(~r/Queue ordinal: `(\d+)`/, issue["description"] || "") do
+        [_, value] -> String.to_integer(value)
+        nil -> 2_147_483_647
+      end
+
+    {ordinal, issue["id"]}
+  end
+
   defp ready_task?(issue) do
     issue["type"] == "task" and issue["status"] in ["open", "in_progress"] and
-      (issue["blocked_by"] || []) == [] and is_binary(issue["id"])
+      is_binary(issue["id"])
   end
 
   defp queue_items(queue_id, issues) do

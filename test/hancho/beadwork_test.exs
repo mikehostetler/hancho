@@ -25,6 +25,11 @@ defmodule Hancho.BeadworkTest do
     def run("/test/bw", ["ready", "--json"], _options) do
       {:ok, %Result{stdout: "null\n", stderr: "", exit_status: 0}}
     end
+
+    def run("/test/bw", ["list", "--all", "--json"], _options) do
+      {:ok,
+       %Result{stdout: ~s([{"id":"hancho-2","type":"task"}]) <> "\n", stderr: "", exit_status: 0}}
+    end
   end
 
   defmodule ReadyCommand do
@@ -63,5 +68,10 @@ defmodule Hancho.BeadworkTest do
 
     assert Hancho.Beadwork.ready(executable: "/test/bw", command: ReadyCommand) ==
              {:ok, [%{"id" => "hancho-1", "type" => "task", "status" => "open"}]}
+  end
+
+  test "lists all issues for queue readiness fallback" do
+    assert Hancho.Beadwork.list_all(executable: "/test/bw", command: Command) ==
+             {:ok, [%{"id" => "hancho-2", "type" => "task"}]}
   end
 end

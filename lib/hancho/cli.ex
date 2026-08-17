@@ -9,7 +9,7 @@ defmodule Hancho.CLI do
     hancho doctor     Inspect the repository and local tools
     hancho run WORKFLOW ISSUE_ID
                       Run one Beadwork workflow in the foreground
-    hancho queue WORKFLOW --source beadwork-ready --count N [--verbose]
+    hancho queue WORKFLOW --source beadwork-ready --count N [--dry-run] [--verbose]
                       Run ready Beadwork tasks serially in the foreground
     hancho --version  Print the Hancho version
     hancho --help     Print this help
@@ -20,7 +20,8 @@ defmodule Hancho.CLI do
     version: :boolean,
     source: :string,
     count: :integer,
-    verbose: :boolean
+    verbose: :boolean,
+    dry_run: :boolean
   ]
   @aliases [h: :help, v: :version]
 
@@ -111,8 +112,9 @@ defmodule Hancho.CLI do
         end)
 
       with {:ok, project} <- project_api.discover(cwd: cwd),
-           {:ok, result} <- runner.run(project, workflow, source, count, queue_options) do
-        print_queue_result(result)
+           {:ok, result} <-
+             run_or_preview(runner, project, workflow, source, count, parsed, queue_options) do
+        print_queue_output(result, parsed[:dry_run] || false)
       else
         {:error, reason} ->
           IO.puts(:stderr, "ERROR: #{format_error(reason)}")
@@ -135,6 +137,31 @@ defmodule Hancho.CLI do
     IO.puts(:stderr, "Run 'hancho --help' for usage.")
     2
   end
+
+  defp run_or_preview(runner, project, workflow, source, count, parsed, options) do
+    if parsed[:dry_run] do
+      runner.preview(project, workflow, source, count, options)
+    else
+      runner.run(project, workflow, source, count, options)
+    end
+  end
+
+  defp print_queue_output(preview, true) do
+    count = length(preview.issues)
+    noun = if count == 1, do: "task", else: "tasks"
+    IO.puts("Dry run: #{preview.workflow} selected #{count} #{noun} from #{preview.source}.")
+
+    preview.issues
+    |> Enum.with_index(1)
+    |> Enum.each(fn {issue, position} ->
+      title = if is_binary(issue["title"]), do: " — #{issue["title"]}", else: ""
+      IO.puts("#{position}. #{issue["id"]}#{title}")
+    end)
+
+    0
+  end
+
+  defp print_queue_output(result, false), do: print_queue_result(result)
 
   defp print_usage do
     IO.puts(@usage)

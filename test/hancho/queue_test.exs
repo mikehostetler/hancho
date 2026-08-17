@@ -19,6 +19,31 @@ defmodule Hancho.QueueTest do
     end
   end
 
+  defmodule ContainerReadyBeadwork do
+    def ready(_options) do
+      {:ok, [%{"id" => "epic-1", "type" => "epic", "status" => "open", "blocked_by" => []}]}
+    end
+
+    def list_all(_options) do
+      {:ok,
+       [
+         issue("task-later", "open", ["task-next"], 20),
+         issue("task-closed", "closed", [], 5),
+         issue("task-next", "open", ["task-closed"], 10)
+       ]}
+    end
+
+    defp issue(id, status, blocked_by, ordinal) do
+      %{
+        "id" => id,
+        "type" => "task",
+        "status" => status,
+        "blocked_by" => blocked_by,
+        "description" => "Queue ordinal: `#{ordinal}`"
+      }
+    end
+  end
+
   defmodule Reconciler do
     def initial(project, _options) do
       {:ok, %{repository: project.root, branch: "main", head: "head-0", worktrees: []}}
@@ -204,6 +229,18 @@ defmodule Hancho.QueueTest do
     assert Enum.count(events, &(&1["event"] == "queue.reconciled")) == 6
     assert Enum.any?(events, &(&1["event"] == "queue.completed"))
     assert Enum.all?(events, &(&1["metadata"]["queue_id"] == "queue-test"))
+  end
+
+  test "previews task readiness from all issues when ready returns only containers" do
+    project = Hancho.Project.new(temporary_directory())
+
+    assert {:ok, preview} =
+             QueueRunner.preview(project, "implement", "beadwork-ready", 1,
+               beadwork: ContainerReadyBeadwork
+             )
+
+    assert preview.issues == [%{"id" => "task-next", "status" => "open"}]
+    refute File.exists?(project.bedrock_path)
   end
 
   test "stops on the first failed child and leaves later items pending" do

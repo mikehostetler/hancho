@@ -38,6 +38,17 @@ defmodule Hancho.CLITest do
         error: nil
       })
     end
+
+    def preview(project, "implement", "beadwork-ready", 1, options) do
+      send(self(), {:queue_preview, project, options[:verbose]})
+
+      {:ok,
+       %{
+         workflow: "implement",
+         source: "beadwork-ready",
+         issues: [%{"id" => "task-1", "title" => "First task", "status" => "open"}]
+       }}
+    end
   end
 
   test "has explicit help and version commands" do
@@ -124,5 +135,33 @@ defmodule Hancho.CLITest do
       end)
 
     assert output == "ERROR: queue requires --source and a positive --count.\n"
+  end
+
+  test "previews a queue without running it" do
+    output =
+      capture_io(fn ->
+        assert Hancho.CLI.run(
+                 [
+                   "queue",
+                   "implement",
+                   "--source",
+                   "beadwork-ready",
+                   "--count",
+                   "1",
+                   "--dry-run"
+                 ],
+                 cwd: "/repo",
+                 project_api: ProjectAPI,
+                 queue_runner: QueueRunner
+               ) == 0
+      end)
+
+    assert output ==
+             "Dry run: implement selected 1 task from beadwork-ready.\n" <>
+               "1. task-1 — First task\n"
+
+    assert_received {:queue_preview, project, false}
+    assert project.root == "/repo"
+    refute_received {:queue_input, _project, _verbose}
   end
 end
