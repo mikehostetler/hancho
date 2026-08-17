@@ -6,6 +6,14 @@ defmodule Hancho.Workflow.Runner do
   @spec run(Hancho.Project.t(), String.t(), map(), keyword()) ::
           {:ok, Hancho.Workflow.Result.t()} | {:error, term()}
   def run(project, workflow_name, input, options \\ []) do
+    lease_options = Keyword.put_new(options, :lease_command, "run #{workflow_name}")
+
+    Hancho.FactoryLease.with_lease(project, lease_options, fn ->
+      do_run(project, workflow_name, input, options)
+    end)
+  end
+
+  defp do_run(project, workflow_name, input, options) do
     loader = Keyword.get(options, :loader, Loader)
     store_api = Keyword.get(options, :store_api, Store)
 
@@ -23,6 +31,14 @@ defmodule Hancho.Workflow.Runner do
   @spec retry(Hancho.Project.t(), String.t(), keyword()) ::
           {:ok, Hancho.Workflow.Result.t()} | {:error, term()}
   def retry(project, run_id, options \\ []) do
+    lease_options = Keyword.put_new(options, :lease_command, "retry #{run_id}")
+
+    Hancho.FactoryLease.with_lease(project, lease_options, fn ->
+      do_retry(project, run_id, options)
+    end)
+  end
+
+  defp do_retry(project, run_id, options) do
     store_api = Keyword.get(options, :store_api, Store)
 
     with {:ok, store} <- store_api.open(project.bedrock_path) do
@@ -68,11 +84,11 @@ defmodule Hancho.Workflow.Runner do
     reconciler = Keyword.get(options, :reconciler, RunReconciler)
 
     with {:ok, run} <- store_api.fetch_run(store, run_id),
-         :ok <- stopped_run(run),
+         :ok <- resumable_run(run),
          {:ok, definition} <- definition_from_snapshot(run),
          {:ok, input} <- Jason.decode(run["input_json"]),
          {:ok, steps} <- store_api.list_steps(store, run_id),
-         {:ok, position} <- stopped_position(steps),
+         {:ok, position} <- resumable_position(steps),
          {:ok, outputs} <- completed_outputs(steps),
          {:ok, _summary} <- reconciler.retry(project, outputs, reconcile_options(options)),
          {:ok, log} <- open_log(project, run_id, options) do
@@ -125,8 +141,11 @@ defmodule Hancho.Workflow.Runner do
     end
   end
 
-  defp stopped_run(%{"status" => "stopped"}), do: :ok
-  defp stopped_run(%{"status" => status}), do: {:error, {:run_not_stopped, status}}
+  defp resumable_run(%{"status" => status})
+       when status in ["stopped", "running", "recovery_required"],
+       do: :ok
+
+  defp resumable_run(%{"status" => status}), do: {:error, {:run_not_resumable, status}}
 
   defp definition_from_snapshot(run) do
     yaml = run["workflow_yaml"]
@@ -140,9 +159,9 @@ defmodule Hancho.Workflow.Runner do
     error -> {:error, Exception.message(error)}
   end
 
-  defp stopped_position(steps) do
-    case Enum.find(steps, &(&1["status"] == "stopped")) do
-      nil -> {:error, :stopped_step_not_found}
+  defp resumable_position(steps) do
+    case Enum.find(steps, &(&1["status"] in ["stopped", "running", "recovery_required"])) do
+      nil -> {:error, :resumable_step_not_found}
       step -> {:ok, step["position"]}
     end
   end

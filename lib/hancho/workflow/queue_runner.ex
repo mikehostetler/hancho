@@ -8,6 +8,14 @@ defmodule Hancho.Workflow.QueueRunner do
   @spec run(Hancho.Project.t(), String.t(), String.t(), pos_integer(), keyword()) ::
           {:ok, QueueResult.t()} | {:error, term()}
   def run(project, workflow, source, count, options \\ []) do
+    lease_options = Keyword.put_new(options, :lease_command, "queue #{workflow}")
+
+    Hancho.FactoryLease.with_lease(project, lease_options, fn ->
+      do_run(project, workflow, source, count, options)
+    end)
+  end
+
+  defp do_run(project, workflow, source, count, options) do
     beadwork = Keyword.get(options, :beadwork, Hancho.Beadwork)
     store_api = Keyword.get(options, :store_api, Store)
     reconciler = Keyword.get(options, :reconciler, QueueReconciler)
@@ -40,6 +48,14 @@ defmodule Hancho.Workflow.QueueRunner do
   @spec resume(Hancho.Project.t(), String.t(), keyword()) ::
           {:ok, QueueResult.t()} | {:error, term()}
   def resume(project, queue_id, options \\ []) do
+    lease_options = Keyword.put_new(options, :lease_command, "resume #{queue_id}")
+
+    Hancho.FactoryLease.with_lease(project, lease_options, fn ->
+      do_resume(project, queue_id, options)
+    end)
+  end
+
+  defp do_resume(project, queue_id, options) do
     store_api = Keyword.get(options, :store_api, Store)
 
     with {:ok, store} <- store_api.open(project.bedrock_path) do
@@ -138,6 +154,7 @@ defmodule Hancho.Workflow.QueueRunner do
          items = queue_items_from_state(queue),
          position = queue["current_position"],
          item = Enum.at(items, position),
+         {:ok, recovery} <- child_recovery(store_api, store, item.run_id),
          :ok <- store_api.resume_queue(store, queue_id),
          :ok <- store_api.close(store),
          :ok <-
@@ -154,15 +171,18 @@ defmodule Hancho.Workflow.QueueRunner do
            emit(
              project,
              queue_id,
-             "queue.item_retried",
-             item_message("Retrying", item, position, length(items)),
-             item_metadata(item, position, length(items)),
+             recovery_event(recovery),
+             item_message(recovery_verb(recovery), item, position, length(items)),
+             item_metadata(item, position, length(items)) |> Map.put(:recovery, recovery),
              true,
              options
            ) do
-      child_options = Keyword.put(options, :run_id, item.run_id)
+      child_options =
+        options
+        |> Keyword.put(:run_id, item.run_id)
+        |> Keyword.put(:factory_lease, :held)
 
-      case runner.retry(project, item.run_id, child_options) do
+      case recover_child(runner, recovery, project, queue["workflow_name"], item, child_options) do
         {:ok, %{status: :completed} = result} ->
           complete_item(
             project,
@@ -197,7 +217,11 @@ defmodule Hancho.Workflow.QueueRunner do
             items,
             position,
             item,
-            %{code: "child_retry_failed", error: Hancho.Log.Event.normalize(reason)},
+            %{
+              code: "child_recovery_failed",
+              recovery: recovery,
+              error: Hancho.Log.Event.normalize(reason)
+            },
             store,
             options
           )
@@ -255,7 +279,10 @@ defmodule Hancho.Workflow.QueueRunner do
              true,
              options
            ) do
-      child_options = Keyword.put(options, :run_id, item.run_id)
+      child_options =
+        options
+        |> Keyword.put(:run_id, item.run_id)
+        |> Keyword.put(:factory_lease, :held)
 
       case runner.run(
              project,
@@ -565,14 +592,45 @@ defmodule Hancho.Workflow.QueueRunner do
     end)
   end
 
-  defp resumable_queue(%{"status" => "stopped", "items" => items, "current_position" => position}) do
+  defp resumable_queue(%{"status" => status, "items" => items, "current_position" => position})
+       when status in ["stopped", "running", "recovery_required"] do
     case Enum.at(items, position) do
-      %{"status" => "stopped"} -> :ok
-      _item -> {:error, :stopped_queue_item_not_found}
+      %{"status" => item_status} when item_status in ["pending", "stopped", "running"] -> :ok
+      _item -> {:error, :resumable_queue_item_not_found}
     end
   end
 
-  defp resumable_queue(%{"status" => status}), do: {:error, {:queue_not_stopped, status}}
+  defp resumable_queue(%{"status" => status}), do: {:error, {:queue_not_resumable, status}}
+
+  defp child_recovery(store_api, store, run_id) do
+    if function_exported?(store_api, :fetch_run, 2) do
+      case store_api.fetch_run(store, run_id) do
+        {:ok, _run} -> {:ok, :retry}
+        {:error, :not_found} -> {:ok, :start}
+        {:error, reason} -> {:error, {:child_state_unavailable, reason}}
+      end
+    else
+      {:ok, :retry}
+    end
+  end
+
+  defp recover_child(runner, :retry, project, _workflow, item, options) do
+    runner.retry(project, item.run_id, options)
+  end
+
+  defp recover_child(runner, :start, project, workflow, item, options) do
+    runner.run(
+      project,
+      workflow,
+      %{"repo_path" => project.root, "issue_id" => item.issue_id},
+      options
+    )
+  end
+
+  defp recovery_event(:retry), do: "queue.item_retried"
+  defp recovery_event(:start), do: "queue.item_restarted"
+  defp recovery_verb(:retry), do: "Retrying"
+  defp recovery_verb(:start), do: "Restarting"
 
   defp validate_request(@source, count) when is_integer(count) and count > 0, do: :ok
 

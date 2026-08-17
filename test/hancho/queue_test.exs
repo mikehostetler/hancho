@@ -400,6 +400,38 @@ defmodule Hancho.QueueTest do
     assert Enum.map(queue["items"], & &1["status"]) == ["completed", "completed", "completed"]
   end
 
+  test "starts a saved child when the queue stopped before child creation" do
+    project = Hancho.Project.new(temporary_directory())
+    items = [%{position: 0, issue_id: "task-1", run_id: "queue-pre-child-001"}]
+    state = %{repository: project.root, branch: "main", head: "head-0"}
+
+    assert {:ok, store} = Store.open(project.bedrock_path)
+
+    assert :ok =
+             Store.create_queue(
+               store,
+               "queue-pre-child",
+               "implement",
+               "beadwork-ready",
+               items,
+               state
+             )
+
+    assert :ok = Store.start_queue_item(store, "queue-pre-child", 0)
+    assert :ok = Store.stop_queue_item(store, "queue-pre-child", 0, :interrupted)
+    assert :ok = Store.close(store)
+
+    assert {:ok, result} =
+             QueueRunner.resume(project, "queue-pre-child",
+               reconciler: Reconciler,
+               workflow_runner: WorkflowRunner,
+               log: :disabled
+             )
+
+    assert result.status == :completed
+    assert_received {:ran, "task-1", "queue-pre-child-001"}
+  end
+
   test "stops before a child when reconciliation fails" do
     project = Hancho.Project.new(temporary_directory())
 

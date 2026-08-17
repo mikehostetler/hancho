@@ -44,8 +44,8 @@ defmodule Hancho.Workflow.Runtime do
     step = Enum.at(data.definition.steps, data.index)
     scope = %{"input" => data.input, "steps" => data.outputs, "run" => %{"id" => data.run_id}}
 
-    with :ok <- log(data, "Step started: #{step.name}", "workflow.step_started", step),
-         :ok <- data.store_api.start_step(data.store, data.run_id, data.index, step, step.params),
+    with :ok <- data.store_api.start_step(data.store, data.run_id, data.index, step, step.params),
+         :ok <- audit(data, "Step started: #{step.name}", "workflow.step_started", step),
          {:ok, params} <- Params.resolve(step.params, scope),
          {:ok, action} <- data.registry.fetch(step.action),
          {:ok, result} <- data.executor.run(action, params, action_context(data, step)),
@@ -54,8 +54,8 @@ defmodule Hancho.Workflow.Runtime do
       outputs = Map.put(data.outputs, step.name, result)
 
       with :ok <-
-             data.store_api.complete_step(data.store, data.run_id, data.index, result, outputs),
-           :ok <- log(data, "Step completed: #{step.name}", "workflow.step_completed", step) do
+             data.store_api.complete_step(data.store, data.run_id, data.index, result, outputs) do
+        audit(data, "Step completed: #{step.name}", "workflow.step_completed", step)
         advance(%{data | outputs: outputs})
       else
         {:error, reason} -> stop(data, step, reason)
@@ -75,7 +75,7 @@ defmodule Hancho.Workflow.Runtime do
     if next_index == length(data.definition.steps) do
       case data.store_api.complete_run(data.store, data.run_id, data.outputs) do
         :ok ->
-          _result = Hancho.Log.write(data.log, "Workflow completed", event: "workflow.completed")
+          audit(data, "Workflow completed", "workflow.completed")
           result = result(data, :completed, nil, nil)
           {:stop_and_reply, :normal, [{:reply, data.caller, result}], data}
 
@@ -91,18 +91,31 @@ defmodule Hancho.Workflow.Runtime do
 
   defp stop(data, step, reason) do
     error = Event.normalize(reason)
-    _result = data.store_api.fail_step(data.store, data.run_id, data.index, error)
-    _result = data.store_api.fail_run(data.store, data.run_id, step.name, data.outputs, error)
+    persisted_error = stop_transition(data, step, error)
 
-    _result =
-      Hancho.Log.write(data.log, "Step stopped: #{step.name}",
-        event: "workflow.stopped",
-        level: :error,
-        metadata: %{step: step.name, error: error}
-      )
+    audit(data, "Step stopped: #{step.name}", "workflow.stopped",
+      level: :error,
+      metadata: %{step: step.name, error: persisted_error}
+    )
 
-    result = result(data, :stopped, step.name, error)
+    result = result(data, :stopped, step.name, persisted_error)
     {:stop_and_reply, :normal, [{:reply, data.caller, result}], data}
+  end
+
+  defp stop_transition(data, step, error) do
+    case data.store_api.stop_run_and_step(
+           data.store,
+           data.run_id,
+           data.index,
+           step.name,
+           error
+         ) do
+      :ok ->
+        error
+
+      {:error, reason} ->
+        Event.normalize(%{cause: error, state_transition_failed: reason})
+    end
   end
 
   defp result(data, status, current_step, error) do
@@ -130,10 +143,14 @@ defmodule Hancho.Workflow.Runtime do
 
   defp step_name(data), do: data.definition.steps |> Enum.at(data.index) |> Map.fetch!(:name)
 
-  defp log(data, message, event, step) do
-    Hancho.Log.write(data.log, message,
-      event: event,
-      metadata: %{step: step.name, action: step.action}
-    )
+  defp audit(data, message, event, options \\ [])
+
+  defp audit(data, message, event, %Hancho.Workflow.Step{} = step) do
+    audit(data, message, event, metadata: %{step: step.name, action: step.action})
+  end
+
+  defp audit(data, message, event, options) do
+    _result = Hancho.Log.write(data.log, message, Keyword.put(options, :event, event))
+    :ok
   end
 end

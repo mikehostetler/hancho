@@ -264,6 +264,48 @@ defmodule Hancho.WorkflowTest do
     Store.close(store)
   end
 
+  test "recovers a run that stopped after a step started" do
+    {project, _workflow_path} = project_with_workflow(successful_workflow())
+    {:ok, definition, source} = Loader.load_with_source(project, "test")
+    first = hd(definition.steps)
+
+    assert {:ok, store} = Store.open(project.bedrock_path)
+    assert :ok = Store.create_run(store, "run-interrupted", definition, %{"number" => 3}, source)
+    assert :ok = Store.start_step(store, "run-interrupted", 0, first, first.params)
+    assert :ok = Store.close(store)
+
+    assert {:ok, completed} =
+             Runner.retry(project, "run-interrupted",
+               registry: Registry,
+               executor: Executor,
+               reconciler: RetryReconciler,
+               log: :disabled,
+               flush_state: false
+             )
+
+    assert completed.status == :completed
+    assert completed.outputs["second"] == %{"value" => 8}
+
+    assert {:ok, reopened} = Store.open(project.bedrock_path)
+    assert {:ok, run} = Store.fetch_run(reopened, "run-interrupted")
+    assert run["status"] == "completed"
+    assert run["transition_version"] > 0
+    Store.close(reopened)
+  end
+
+  test "rejects completion while a run has an incomplete step" do
+    {project, _workflow_path} = project_with_workflow(successful_workflow())
+    {:ok, definition, source} = Loader.load_with_source(project, "test")
+
+    assert {:ok, store} = Store.open(project.bedrock_path)
+    assert :ok = Store.create_run(store, "run-incomplete", definition, %{"number" => 3}, source)
+    assert :ok = Store.start_step(store, "run-incomplete", 0, hd(definition.steps), %{})
+    assert {:error, :run_has_incomplete_steps} = Store.complete_run(store, "run-incomplete", %{})
+    assert {:ok, run} = Store.fetch_run(store, "run-incomplete")
+    assert run["status"] == "running"
+    Store.close(store)
+  end
+
   test "runs the default workflow through all approved actions" do
     repository = temporary_repository()
     project = Hancho.Project.new(repository)
