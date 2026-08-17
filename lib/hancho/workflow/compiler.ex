@@ -49,6 +49,10 @@ defmodule Hancho.Workflow.Compiler do
   end
 
   defp validate_action_params(action, params) do
+    if is_atom(action) do
+      Code.ensure_loaded(action)
+    end
+
     if is_atom(action) and function_exported?(action, :schema, 0) do
       fields = action.schema().fields |> Map.new()
       allowed = Map.keys(fields)

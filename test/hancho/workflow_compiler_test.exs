@@ -15,6 +15,10 @@ defmodule Hancho.WorkflowCompilerTest do
     end
   end
 
+  defmodule DynamicRegistry do
+    def fetch("Test.Unloaded"), do: {:ok, Process.get({__MODULE__, :action})}
+  end
+
   test "compiles the full workflow and its local dependencies" do
     project = project()
     assert :ok = Hancho.Workflow.Default.install(project)
@@ -56,6 +60,40 @@ defmodule Hancho.WorkflowCompilerTest do
              Runner.run(project, "invalid", %{"repo_path" => project.root}, log: :disabled)
 
     refute File.exists?(project.bedrock_path)
+  end
+
+  test "loads an action before it validates required parameters" do
+    project = project()
+    action = unloaded_action(project)
+    Process.put({DynamicRegistry, :action}, action)
+    refute Code.loaded?(action)
+
+    on_exit(fn -> Process.delete({DynamicRegistry, :action}) end)
+
+    {:ok, workflow} =
+      Definition.new(%{
+        name: "missing-land-branch",
+        version: 1,
+        steps: [
+          %{
+            name: "land",
+            action: "Test.Unloaded",
+            params: %{
+              repo_path: project.root,
+              baseline: String.duplicate("a", 40),
+              commit: String.duplicate("b", 40)
+            }
+          }
+        ]
+      })
+
+    assert {:error, {:workflow_compile_failed, "land", {:missing_action_params, [:branch]}}} =
+             Compiler.compile(project, workflow, %{},
+               registry: DynamicRegistry,
+               validate_environment: false
+             )
+
+    assert Code.loaded?(action)
   end
 
   test "rejects unknown providers and missing prompt files" do
@@ -115,5 +153,45 @@ defmodule Hancho.WorkflowCompilerTest do
     end)
 
     Hancho.Project.new(path)
+  end
+
+  defp unloaded_action(project) do
+    action = Module.concat(__MODULE__, "UnloadedAction#{System.unique_integer([:positive])}")
+
+    source = """
+    defmodule #{inspect(action)} do
+      use Jido.Action,
+        name: "unloaded_action",
+        description: "Test action loaded during workflow compilation",
+        schema:
+          Zoi.object(%{
+            repo_path: Zoi.string() |> Zoi.min(1),
+            branch: Zoi.string() |> Zoi.min(1),
+            baseline: Zoi.string() |> Zoi.min(1),
+            commit: Zoi.string() |> Zoi.min(1)
+          })
+
+      def run(params, _context), do: {:ok, params}
+    end
+    """
+
+    compiled = Code.compile_string(source)
+    {^action, beam} = List.keyfind(compiled, action, 0)
+    directory = Path.join(project.root, "action_beams")
+    File.mkdir_p!(directory)
+    File.write!(Path.join(directory, Atom.to_string(action) <> ".beam"), beam)
+
+    code_path = String.to_charlist(directory)
+    true = :code.add_patha(code_path)
+    :code.purge(action)
+    :code.delete(action)
+
+    on_exit(fn ->
+      :code.purge(action)
+      :code.delete(action)
+      :code.del_path(code_path)
+    end)
+
+    action
   end
 end
