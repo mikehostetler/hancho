@@ -8,8 +8,22 @@ defmodule Hancho.SchemaTest do
   alias Hancho.Config.Repo
   alias Hancho.Log.Event
   alias Hancho.Project
+  alias Hancho.Workflow.Definition
+  alias Hancho.Workflow.Result, as: WorkflowResult
+  alias Hancho.Workflow.Step
 
-  @schema_modules [Result, Config, Error, Logs, Repo, Event, Project]
+  @schema_modules [
+    Result,
+    Config,
+    Error,
+    Logs,
+    Repo,
+    Event,
+    Project,
+    Definition,
+    Step,
+    WorkflowResult
+  ]
 
   test "defines every Hancho data struct with a Zoi struct schema" do
     for module <- @schema_modules do

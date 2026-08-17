@@ -21,7 +21,9 @@ defmodule Hancho.ProjectTest do
     assert project.hancho_dir == "/work/repo/.hancho"
     assert project.config_path == "/work/repo/.hancho/config.toml"
     assert project.logs_path == "/work/repo/.hancho/logs"
-    assert project.state_path == "/work/repo/.hancho/state"
+    assert project.database_path == "/work/repo/.hancho/hancho.sqlite3"
+    assert project.workflows_path == "/work/repo/.hancho/workflows"
+    assert project.worktrees_path == "/work/repo/.hancho/worktrees"
 
     assert Hancho.Project.log_path(project, "runs/factory.jsonl") ==
              {:ok, "/work/repo/.hancho/logs/runs/factory.jsonl"}

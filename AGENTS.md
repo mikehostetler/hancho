@@ -13,12 +13,20 @@
   the OTP `:logger_std_h` file handler. Keep activity writes ordered and
   durable. Do not add another Logger file-backend package without a new need.
 - Use `toml_elixir` to read TOML configuration files.
+- Use `yaml_elixir` to read workflow definitions. Keep workflows out of TOML.
 - Use `zoi` to validate configuration data.
 - Define every Hancho data struct from a `Zoi.struct/3` schema. Expose the
   schema with `schema/0`, derive the type and fields from it, and parse data in
   public constructors.
 - Read repository configuration through `Hancho.Config` and use dot-delimited keys.
 - Use the OTP `:gen_statem` behavior for workflow state management.
+- Use `jido_action` for workflow actions and action parameter validation.
+- Keep action module resolution in an explicit allowlist. Do not create atoms
+  from YAML action names.
+- Store durable workflow and step state in `.hancho/hancho.sqlite3` with
+  `exqlite`. Do not add a `.hancho/state/` folder.
+- Keep the first workflow sequential and in the foreground. Stop on the first
+  failed step and retain its durable state.
 - Use `erlexec` for operating-system process management.
 - Use the `git` package through `Hancho.Git` for Git commands. Run Git processes through erlexec.
 - Use `jido_harness` to call and manage all CLI coding agents.

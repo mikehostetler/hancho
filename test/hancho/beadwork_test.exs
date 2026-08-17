@@ -12,6 +12,15 @@ defmodule Hancho.BeadworkTest do
     def run("/test/bw", ["config", "list"], _options) do
       {:ok, %Result{stdout: "not initialized\n", stderr: "", exit_status: 1}}
     end
+
+    def run("/test/bw", ["show", "hancho-123", "--json"], _options) do
+      {:ok,
+       %Result{
+         stdout: ~s({"id":"hancho-123","status":"open"}) <> "\n",
+         stderr: "",
+         exit_status: 0
+       }}
+    end
   end
 
   test "returns trimmed version output through the command boundary" do
@@ -27,5 +36,10 @@ defmodule Hancho.BeadworkTest do
   test "returns command output and status on failure" do
     assert Hancho.Beadwork.repository_config(executable: "/test/bw", command: Command) ==
              {:error, {"not initialized", 1}}
+  end
+
+  test "decodes issue command output as JSON" do
+    assert Hancho.Beadwork.show("hancho-123", executable: "/test/bw", command: Command) ==
+             {:ok, %{"id" => "hancho-123", "status" => "open"}}
   end
 end

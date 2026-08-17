@@ -36,13 +36,21 @@ defmodule Hancho.InitTest do
            }
 
     assert File.dir?(Path.join(repository, ".hancho/logs"))
-    assert File.dir?(Path.join(repository, ".hancho/state"))
+    assert File.dir?(Path.join(repository, ".hancho/workflows"))
+    assert File.dir?(Path.join(repository, ".hancho/worktrees"))
+
+    assert File.read!(Path.join(repository, ".hancho/workflows/implement.yaml")) =~
+             "action: Hancho.Actions.Preflight"
+
     assert File.read!(Path.join(repository, ".gitignore")) == "_build/\n/.hancho/\n"
 
     File.write!(config, "version = 1\nname = \"custom\"\n")
+    workflow = Path.join(repository, ".hancho/workflows/implement.yaml")
+    File.write!(workflow, "name: custom\n")
     assert {:ok, path} = Hancho.Init.run(options)
     assert String.ends_with?(path, "/#{Path.basename(repository)}/.hancho")
     assert File.read!(config) == "version = 1\nname = \"custom\"\n"
+    assert File.read!(workflow) == "name: custom\n"
     assert File.read!(Path.join(repository, ".gitignore")) == "_build/\n/.hancho/\n"
   end
 

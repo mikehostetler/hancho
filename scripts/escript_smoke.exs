@@ -50,6 +50,27 @@ try do
   unless config =~ "version = 1" and config =~ "[repo]" and config =~ "[logs]" do
     raise "init did not write the default configuration"
   end
+
+  {run_output, 1} =
+    System.cmd(hancho, ["run", "implement", "missing-issue"],
+      cd: repository,
+      stderr_to_stdout: true
+    )
+
+  unless run_output =~ "stopped at preflight" do
+    raise "workflow did not report its stopped step"
+  end
+
+  unless File.exists?(Path.join(repository, ".hancho/hancho.sqlite3")) do
+    raise "escript workflow did not create its SQLite database"
+  end
+
+  native_libraries =
+    Path.wildcard(Path.join(repository, ".hancho/native/exqlite/priv/sqlite3_nif.*"))
+
+  unless native_libraries != [] do
+    raise "escript workflow did not extract the Exqlite native library"
+  end
 after
   File.rm_rf!(repository)
 end

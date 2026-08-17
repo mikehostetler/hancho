@@ -1,6 +1,6 @@
 # Hancho
 
-Hancho is a minimal Elixir escript shell.
+Hancho is an Elixir escript that manages a software factory for one Git repository.
 
 Build and run it:
 
@@ -23,7 +23,10 @@ Initialize Hancho in a Git repository:
 ./hancho init
 ```
 
-This creates `.hancho/config.toml`, `.hancho/logs/`, and `.hancho/state/`. The complete `.hancho/` folder stays local and ignored by Git.
+This creates `.hancho/config.toml`, `.hancho/logs/`, `.hancho/workflows/`, and
+`.hancho/worktrees/`. It also installs the first workflow at
+`.hancho/workflows/implement.yaml`. The complete `.hancho/` folder stays local
+and ignored by Git.
 
 The initial configuration is:
 
@@ -46,6 +49,44 @@ compress = true
 ```
 
 Use `Hancho.Config.load/1` to read and validate the file. Use dot-delimited keys such as `Hancho.Config.get(config, "repo.path")` to read values. If the file does not exist, `load/1` returns a validated default configuration for the repository without writing a file.
+
+## Implementation workflow
+
+Run the first factory workflow for one ready Beadwork task:
+
+```sh
+./hancho run implement hancho-123
+```
+
+This command stays in the foreground. The workflow does these steps in order:
+
+1. Check the Git repository and Beadwork task.
+2. Claim the task.
+3. Create a detached worktree in `.hancho/worktrees/`.
+4. Call the configured CLI coding agent through Jido.Harness.
+5. Run `mix test`.
+6. Create a conventional Git commit.
+7. Fast-forward the original branch to the commit.
+8. Remove the worktree.
+9. Close and sync the Beadwork task.
+
+The YAML file names each step, selects one approved `Jido.Action` module, and
+sets its parameters. References are explicit:
+
+- `$input.key` reads command input.
+- `$run.id` reads the durable run ID.
+- `$steps.step_name.key` reads an earlier step result.
+
+Workflow structure does not use `config.toml`. Edit the repository-local YAML
+file to change action parameters. Hancho permits only action modules in
+`Hancho.Workflow.Registry`; it does not create atoms from YAML module names.
+
+Hancho records every run and step in `.hancho/hancho.sqlite3`. A successful
+step saves its result before the next step starts. If a step fails, Hancho stops
+the line, records the failed step and error, and returns a nonzero exit status.
+It keeps a failed implementation worktree for inspection when cleanup has not
+started. The escript extracts its packaged Exqlite native library into
+`.hancho/native/` before it opens the database.
 
 ## Factory activity logs
 
@@ -91,5 +132,10 @@ Inspect the current repository and required local tools:
 Hancho uses [Beadwork](https://github.com/jallum/beadwork) for durable work tracking. This repository uses the `hancho` Beadwork issue prefix.
 
 Hancho uses [Jido.Harness](https://github.com/agentjido/jido_harness) as its normalized runtime for CLI coding agents.
+
+Hancho uses [Jido.Action](https://hex.pm/packages/jido_action) for validated
+workflow actions, [yaml_elixir](https://hex.pm/packages/yaml_elixir) for workflow
+definitions, and [Exqlite](https://hex.pm/packages/exqlite) for durable local
+workflow state.
 
 Hancho uses the [`git`](https://hex.pm/packages/git) package behind `Hancho.Git`. Git processes run through erlexec so Hancho can stop a timed-out command and its child processes.

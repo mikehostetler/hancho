@@ -7,6 +7,8 @@ defmodule Hancho.CLI do
   Usage:
     hancho init       Initialize Hancho in the current repository
     hancho doctor     Inspect the repository and local tools
+    hancho run WORKFLOW ISSUE_ID
+                      Run one Beadwork workflow in the foreground
     hancho --version  Print the Hancho version
     hancho --help     Print this help
   """
@@ -62,6 +64,27 @@ defmodule Hancho.CLI do
     end
   end
 
+  defp dispatch_command(["run", workflow, issue_id], options) do
+    project_api = Keyword.get(options, :project_api, Hancho.Project)
+    runner = Keyword.get(options, :workflow_runner, Hancho.Workflow.Runner)
+    cwd = Keyword.get(options, :cwd, File.cwd!())
+
+    with {:ok, project} <- project_api.discover(cwd: cwd),
+         {:ok, result} <-
+           runner.run(
+             project,
+             workflow,
+             %{"repo_path" => project.root, "issue_id" => issue_id},
+             options
+           ) do
+      print_workflow_result(result)
+    else
+      {:error, reason} ->
+        IO.puts(:stderr, "ERROR: #{format_error(reason)}")
+        1
+    end
+  end
+
   defp dispatch_command(arguments, _options) do
     IO.puts(:stderr, "ERROR: Unknown command: #{Enum.join(arguments, " ")}")
     IO.puts(:stderr, "Run 'hancho --help' for usage.")
@@ -83,4 +106,21 @@ defmodule Hancho.CLI do
     IO.puts(:stderr, "Run 'hancho --help' for usage.")
     2
   end
+
+  defp print_workflow_result(%Hancho.Workflow.Result{status: :completed} = result) do
+    IO.puts("Workflow #{result.workflow} completed. Run: #{result.run_id}")
+    0
+  end
+
+  defp print_workflow_result(%Hancho.Workflow.Result{status: :stopped} = result) do
+    IO.puts(
+      :stderr,
+      "ERROR: Workflow #{result.workflow} stopped at #{result.current_step}: #{format_error(result.error)}"
+    )
+
+    1
+  end
+
+  defp format_error(reason) when is_binary(reason), do: reason
+  defp format_error(reason), do: inspect(reason)
 end

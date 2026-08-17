@@ -3,6 +3,25 @@ defmodule Hancho.CLITest do
 
   import ExUnit.CaptureIO
 
+  defmodule ProjectAPI do
+    def discover(cwd: cwd), do: {:ok, Hancho.Project.new(cwd)}
+  end
+
+  defmodule WorkflowRunner do
+    def run(project, "implement", input, _options) do
+      send(self(), {:workflow_input, project, input})
+
+      Hancho.Workflow.Result.new(%{
+        run_id: "run-123",
+        workflow: "implement",
+        status: :completed,
+        current_step: nil,
+        outputs: %{},
+        error: nil
+      })
+    end
+  end
+
   test "has explicit help and version commands" do
     assert capture_io(fn -> assert Hancho.CLI.run([]) == 0 end) =~ "Usage:"
     assert capture_io(fn -> assert Hancho.CLI.run(["--help"]) == 0 end) =~ "hancho doctor"
@@ -36,5 +55,23 @@ defmodule Hancho.CLITest do
 
     assert output ==
              "ERROR: Unknown command: doctor extra\nRun 'hancho --help' for usage.\n"
+  end
+
+  test "runs one workflow in the foreground" do
+    output =
+      capture_io(fn ->
+        assert Hancho.CLI.run(["run", "implement", "hancho-123"],
+                 cwd: "/repo",
+                 project_api: ProjectAPI,
+                 workflow_runner: WorkflowRunner
+               ) == 0
+      end)
+
+    assert output == "Workflow implement completed. Run: run-123\n"
+
+    assert_received {:workflow_input, project,
+                     %{"repo_path" => "/repo", "issue_id" => "hancho-123"}}
+
+    assert project.database_path == "/repo/.hancho/hancho.sqlite3"
   end
 end
