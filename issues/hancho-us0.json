@@ -2,6 +2,7 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T23:43:30Z",
   "created": "2026-08-17T23:33:27Z",
   "description": "Patch the three confirmed review findings: use the correct main-repository HEAD during pre-land recovery, allocate collision-safe verification log files across CLI processes, and prevent a live factory owner from continuing after its lease is replaced. Add focused regression tests and run the full quality gate.",
   "id": "hancho-us0",
@@ -13,8 +14,8 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Fix workflow recovery safety defects",
   "type": "task",
-  "updated_at": "2026-08-17T23:43:23Z"
+  "updated_at": "2026-08-17T23:43:30Z"
 }
