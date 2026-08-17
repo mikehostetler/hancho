@@ -2,14 +2,15 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T14:41:49Z",
   "created": "2026-08-17T14:25:02Z",
   "description": "Add a CLI command that reports durable run state, timings, provider result, verification summary, commit, retained worktree, and failure point.",
   "id": "hancho-f4m.7",
   "labels": [],
   "parent": "hancho-f4m",
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Add durable run inspection",
   "type": "task",
-  "updated_at": "2026-08-17T14:40:10Z"
+  "updated_at": "2026-08-17T14:41:49Z"
 }
