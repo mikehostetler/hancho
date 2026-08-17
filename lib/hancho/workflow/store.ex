@@ -180,6 +180,7 @@ defmodule Hancho.Workflow.Store do
           "repository" => repository_state.repository,
           "expected_branch" => repository_state.branch,
           "expected_head" => repository_state.head,
+          "expected_worktrees" => Map.get(repository_state, :expected_worktrees, []),
           "current_position" => 0,
           "current_run_id" => nil,
           "items" =>

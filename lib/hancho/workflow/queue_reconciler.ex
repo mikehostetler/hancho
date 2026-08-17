@@ -9,13 +9,15 @@ defmodule Hancho.Workflow.QueueReconciler do
          :ok <- attached(status),
          :ok <- clean(status, "repository_status"),
          {:ok, head} <- git.head(working_dir: project.root),
+         {:ok, worktrees} <- discover_worktrees(project, git),
          {:ok, summary} <-
-           check(project, status.branch, head, [], git) do
+           check(project, status.branch, head, worktrees, git) do
       {:ok,
        Map.merge(summary, %{
          repository: project.root,
          branch: status.branch,
-         head: head
+         head: head,
+         expected_worktrees: worktrees
        })}
     end
   end
@@ -24,7 +26,14 @@ defmodule Hancho.Workflow.QueueReconciler do
           {:ok, map()} | {:error, map() | term()}
   def before_item(project, queue, options \\ []) do
     git = Keyword.get(options, :git, Hancho.Git)
-    check(project, queue["expected_branch"], queue["expected_head"], [], git)
+
+    check(
+      project,
+      queue["expected_branch"],
+      queue["expected_head"],
+      queue_worktrees(queue),
+      git
+    )
   end
 
   @spec after_run(Hancho.Project.t(), map(), map(), keyword()) ::
@@ -32,7 +41,7 @@ defmodule Hancho.Workflow.QueueReconciler do
   def after_run(project, queue, outputs, options \\ []) do
     git = Keyword.get(options, :git, Hancho.Git)
     expected_head = get_in(outputs, ["land", "commit"]) || queue["expected_head"]
-    expected_worktrees = expected_worktrees(outputs)
+    expected_worktrees = queue_worktrees(queue) ++ run_worktrees(outputs)
 
     check(project, queue["expected_branch"], expected_head, expected_worktrees, git)
   end
@@ -61,7 +70,7 @@ defmodule Hancho.Workflow.QueueReconciler do
     end
   end
 
-  defp expected_worktrees(outputs) do
+  defp run_worktrees(outputs) do
     created = outputs["create_worktree"]
     removed = outputs["remove_worktree"]
     committed = outputs["commit"]
@@ -76,6 +85,42 @@ defmodule Hancho.Workflow.QueueReconciler do
       ]
     else
       []
+    end
+  end
+
+  defp queue_worktrees(queue) do
+    queue
+    |> Map.get("expected_worktrees", [])
+    |> Enum.map(fn worktree ->
+      %{
+        path: worktree["path"] || worktree[:path],
+        head: worktree["head"] || worktree[:head],
+        clean: Map.get(worktree, "clean", Map.get(worktree, :clean, false))
+      }
+    end)
+  end
+
+  defp discover_worktrees(project, git) do
+    with {:ok, filesystem_paths} <- filesystem_paths(project.worktrees_path),
+         {:ok, registered} <- registered_worktrees(git, project),
+         registered_paths = registered |> Map.keys() |> Enum.sort(),
+         :ok <- equal("worktree_registrations", filesystem_paths, registered_paths) do
+      Enum.reduce_while(filesystem_paths, {:ok, []}, fn path, {:ok, worktrees} ->
+        registration = Map.fetch!(registered, path)
+
+        case git.status(working_dir: path) do
+          {:ok, status} ->
+            worktree = %{path: path, head: registration.head, clean: status.entries == []}
+            {:cont, {:ok, [worktree | worktrees]}}
+
+          {:error, reason} ->
+            {:halt, {:error, reason}}
+        end
+      end)
+      |> case do
+        {:ok, worktrees} -> {:ok, Enum.reverse(worktrees)}
+        error -> error
+      end
     end
   end
 

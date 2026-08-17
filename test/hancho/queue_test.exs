@@ -143,6 +143,7 @@ defmodule Hancho.QueueTest do
         "repository" => state.repository,
         "expected_branch" => state.branch,
         "expected_head" => state.head,
+        "expected_worktrees" => Map.get(state, :expected_worktrees, []),
         "current_position" => 0,
         "current_run_id" => nil,
         "items" =>
@@ -336,6 +337,7 @@ defmodule Hancho.QueueTest do
     assert {:ok, queue} = Store.fetch_queue(reopened, "queue-state")
     assert queue["status"] == "completed"
     assert queue["expected_head"] == "head-1"
+    assert queue["expected_worktrees"] == []
     assert Enum.map(queue["items"], & &1["status"]) == ["completed"]
     Store.close(reopened)
   end
@@ -347,7 +349,13 @@ defmodule Hancho.QueueTest do
     File.mkdir_p!(project.worktrees_path)
 
     assert {:ok, initial} = QueueReconciler.initial(project)
-    queue = %{"expected_branch" => initial.branch, "expected_head" => initial.head}
+
+    queue = %{
+      "expected_branch" => initial.branch,
+      "expected_head" => initial.head,
+      "expected_worktrees" => initial.expected_worktrees
+    }
+
     assert {:ok, %{worktrees: []}} = QueueReconciler.before_item(project, queue)
 
     unexpected = Path.join(project.worktrees_path, "unexpected")
@@ -362,13 +370,44 @@ defmodule Hancho.QueueTest do
             }} = QueueReconciler.before_item(project, queue)
   end
 
+  test "uses retained Hancho worktrees as the queue baseline" do
+    repository = temporary_repository()
+    {:ok, root} = Hancho.Git.repository_root(working_dir: repository)
+    project = Hancho.Project.new(root)
+    File.mkdir_p!(project.worktrees_path)
+    {:ok, head} = Hancho.Git.head(working_dir: root)
+    path = Path.join(project.worktrees_path, "retained-run")
+
+    assert {:ok, :done} = Hancho.Git.create_worktree(root, path, head)
+    File.write!(Path.join(path, "retained.txt"), "diagnostic evidence\n")
+
+    assert {:ok, initial} = QueueReconciler.initial(project)
+
+    assert initial.worktrees == [path]
+    assert initial.expected_worktrees == [%{path: path, head: head, clean: false}]
+
+    queue = %{
+      "expected_branch" => initial.branch,
+      "expected_head" => initial.head,
+      "expected_worktrees" => initial.expected_worktrees
+    }
+
+    assert {:ok, %{worktrees: [^path]}} = QueueReconciler.before_item(project, queue)
+  end
+
   test "reconciles a retained stopped-run worktree against durable outputs" do
     repository = temporary_repository()
     {:ok, root} = Hancho.Git.repository_root(working_dir: repository)
     project = Hancho.Project.new(root)
     File.mkdir_p!(project.worktrees_path)
     assert {:ok, initial} = QueueReconciler.initial(project)
-    queue = %{"expected_branch" => initial.branch, "expected_head" => initial.head}
+
+    queue = %{
+      "expected_branch" => initial.branch,
+      "expected_head" => initial.head,
+      "expected_worktrees" => initial.expected_worktrees
+    }
+
     path = Path.join(project.worktrees_path, "queue-real-001")
 
     assert {:ok, :done} = Hancho.Git.create_worktree(root, path, initial.head)
@@ -390,7 +429,13 @@ defmodule Hancho.QueueTest do
     {:ok, root} = Hancho.Git.repository_root(working_dir: repository)
     project = Hancho.Project.new(root)
     assert {:ok, initial} = QueueReconciler.initial(project)
-    queue = %{"expected_branch" => initial.branch, "expected_head" => initial.head}
+
+    queue = %{
+      "expected_branch" => initial.branch,
+      "expected_head" => initial.head,
+      "expected_worktrees" => initial.expected_worktrees
+    }
+
     File.write!(Path.join(root, "unexpected.txt"), "changed\n")
 
     assert {:error,
