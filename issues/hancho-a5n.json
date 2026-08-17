@@ -2,6 +2,8 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T02:09:59Z",
+  "close_reason": "Implemented and validated in commit a2c0151.",
   "created": "2026-08-17T01:47:57Z",
   "description": "Install jido_action, yaml_elixir, and exqlite. Add ordered named YAML workflow steps with explicit parameter references, a foreground :gen_statem runner, SQLite state at .hancho/hancho.sqlite3, and an implementation workflow for one Beadwork issue.",
   "id": "hancho-a5n",
@@ -13,8 +15,8 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Add YAML action workflows with SQLite state",
   "type": "task",
-  "updated_at": "2026-08-17T02:09:50Z"
+  "updated_at": "2026-08-17T02:09:59Z"
 }
