@@ -225,6 +225,12 @@ The report shows the workflow status, start and finish times, step durations,
 provider and Harness run IDs, verification summary, landed or created commit,
 retained worktree, and failure data.
 
+During implementation, Hancho records an `implement.progress` event every 30
+seconds by default. It records the Harness run ID, elapsed time, observed event
+count, and latest normalized event type. It does not copy raw provider output
+into the progress event. Set `progress_interval_ms` on the implementation step
+to change the interval.
+
 ## Factory activity logs
 
 Hancho writes factory activity to `.hancho/logs/factory.jsonl` by default. These events contain command output, workflow changes, agent activity, and other factory work. They are separate from the normal diagnostic logs for the Hancho application.

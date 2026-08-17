@@ -9,7 +9,8 @@ defmodule Hancho.Actions.Implement do
         prompt: Zoi.string() |> Zoi.min(1),
         worktree_path: Zoi.string() |> Zoi.min(1),
         provider: Zoi.string() |> Zoi.min(1),
-        timeout_ms: Zoi.integer() |> Zoi.min(1)
+        timeout_ms: Zoi.integer() |> Zoi.min(1),
+        progress_interval_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(30_000)
       })
 
   alias Hancho.Actions.Context
@@ -31,14 +32,7 @@ defmodule Hancho.Actions.Implement do
     harness = Context.service(context, :harness, Hancho.Harness)
 
     with {:ok, provider} <- fetch_provider(params.provider),
-         {:ok, result} <-
-           harness.run(provider, params.prompt,
-             cwd: params.worktree_path,
-             approval_mode: :auto_edit,
-             sandbox_mode: :workspace_write,
-             runtime_timeout_ms: params.timeout_ms,
-             await_timeout: params.timeout_ms
-           ),
+         {:ok, result} <- run_harness(harness, provider, params, context),
          :ok <- completed(result) do
       {:ok,
        %{
@@ -48,6 +42,32 @@ defmodule Hancho.Actions.Implement do
          text: tail(result.text, 20_000),
          text_truncated: result.text_truncated? or byte_size(result.text) > 20_000
        }}
+    end
+  end
+
+  defp run_harness(harness, provider, params, context) do
+    options = [
+      cwd: params.worktree_path,
+      approval_mode: :auto_edit,
+      sandbox_mode: :workspace_write,
+      runtime_timeout_ms: params.timeout_ms,
+      await_timeout: params.timeout_ms,
+      progress_interval_ms: params.progress_interval_ms
+    ]
+
+    if Code.ensure_loaded?(harness) and function_exported?(harness, :run_with_progress, 4) do
+      harness.run_with_progress(provider, params.prompt, options, progress_callback(context))
+    else
+      harness.run(provider, params.prompt, Keyword.delete(options, :progress_interval_ms))
+    end
+  end
+
+  defp progress_callback(context) do
+    fn progress ->
+      Hancho.Log.write(context.log, "Implementation progress: #{progress.phase}",
+        event: "implement.progress",
+        metadata: progress
+      )
     end
   end
 

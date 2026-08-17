@@ -60,6 +60,40 @@ defmodule Hancho.ActionsTest do
     end
   end
 
+  defmodule ProgressHarness do
+    def run_with_progress(:codex, _prompt, options, callback) do
+      25 = options[:progress_interval_ms]
+
+      :ok =
+        callback.(%{
+          harness_run_id: "harness-progress",
+          provider: :codex,
+          phase: :started,
+          elapsed_ms: 0,
+          event_count: 0,
+          last_event: nil
+        })
+
+      :ok =
+        callback.(%{
+          harness_run_id: "harness-progress",
+          provider: :codex,
+          phase: :completed,
+          elapsed_ms: 50,
+          event_count: 4,
+          last_event: :run_completed
+        })
+
+      {:ok,
+       Jido.Harness.RunResult.new!(%{
+         run_id: "harness-progress",
+         provider: :codex,
+         status: :completed,
+         text: "implemented"
+       })}
+    end
+  end
+
   defmodule Command do
     def run("/test/mix", ["test"], options) do
       if options[:cwd] == "/repo/worktree" do
@@ -120,6 +154,40 @@ defmodule Hancho.ActionsTest do
 
     assert result.status == :completed
     assert result.harness_run_id == "harness-1"
+  end
+
+  test "records normalized implementation progress without provider output" do
+    repository = temporary_repository()
+    project = Hancho.Project.new(repository)
+    {:ok, config} = Hancho.Config.load(project)
+    {:ok, log} = Hancho.Log.open(project, config)
+
+    assert {:ok, result} =
+             Jido.Exec.run(
+               Actions.Implement,
+               %{
+                 prompt: "Implement hancho-123",
+                 worktree_path: repository,
+                 provider: "codex",
+                 timeout_ms: 1_000,
+                 progress_interval_ms: 25
+               },
+               %{services: %{harness: ProgressHarness}, log: log}
+             )
+
+    assert result.harness_run_id == "harness-progress"
+    assert :ok = Hancho.Log.close(log)
+
+    events =
+      project
+      |> then(&Path.join(&1.logs_path, "factory.jsonl"))
+      |> File.stream!()
+      |> Enum.map(&Jason.decode!/1)
+      |> Enum.filter(&(&1["event"] == "implement.progress"))
+
+    assert Enum.map(events, & &1["metadata"]["phase"]) == ["started", "completed"]
+    assert List.last(events)["metadata"]["last_event"] == "run_completed"
+    refute Enum.any?(events, &Map.has_key?(&1["metadata"], "text"))
   end
 
   test "renders inline and repository-local prompt snapshots" do
