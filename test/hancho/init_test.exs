@@ -3,6 +3,10 @@ defmodule Hancho.InitTest do
 
   import ExUnit.CaptureIO
 
+  defmodule MissingGitProjectAPI do
+    def discover(_options), do: {:error, :git_not_found}
+  end
+
   test "initializes a repository and does not replace its configuration" do
     repository = temporary_directory()
     {_output, 0} = System.cmd("git", ["init", repository])
@@ -39,6 +43,15 @@ defmodule Hancho.InitTest do
 
     assert output == "ERROR: Current directory is not in a Git repository.\n"
     refute File.exists?(Path.join(directory, ".hancho"))
+  end
+
+  test "reports when Git is not installed" do
+    output =
+      capture_io(:stderr, fn ->
+        assert Hancho.CLI.run(["init"], project_api: MissingGitProjectAPI) == 1
+      end)
+
+    assert output == "ERROR: Git executable not found in PATH.\n"
   end
 
   defp temporary_directory do

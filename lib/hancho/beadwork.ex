@@ -23,7 +23,7 @@ defmodule Hancho.Beadwork do
     command = Keyword.get(options, :command, Hancho.Command)
     cwd = Keyword.get(options, :working_dir, File.cwd!())
 
-    with {:ok, executable} <- executable(),
+    with {:ok, executable} <- resolve_executable(options),
          {:ok, %Result{stdout: output, exit_status: 0}} <-
            command.run(executable, arguments, cwd: cwd, stderr_to_stdout: true) do
       {:ok, String.trim(output)}
@@ -33,6 +33,13 @@ defmodule Hancho.Beadwork do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp resolve_executable(options) do
+    case Keyword.fetch(options, :executable) do
+      {:ok, executable} -> {:ok, executable}
+      :error -> executable()
     end
   end
 end

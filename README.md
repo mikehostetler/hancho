@@ -11,6 +11,12 @@ mix escript.build
 
 Print the installed version with `./hancho --version`.
 
+Run all unit, integration, compile, formatting, and escript checks with:
+
+```sh
+mix check
+```
+
 Initialize Hancho in a Git repository:
 
 ```sh

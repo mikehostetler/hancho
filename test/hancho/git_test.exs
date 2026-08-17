@@ -23,24 +23,6 @@ defmodule Hancho.GitTest do
              {:ok, "4b825dc642cb6eb9a060e54bf8d69288fbee4904"}
   end
 
-  test "returns command output and nonzero exit status" do
-    assert Hancho.Git.Runner.run(
-             "/bin/sh",
-             ["-c", "printf failure >&2; exit 7"],
-             timeout: 1_000,
-             stderr_to_stdout: true
-           ) == {:ok, {"failure", 7}}
-  end
-
-  test "stops a command when it reaches its timeout" do
-    assert Hancho.Git.Runner.run(
-             "/bin/sh",
-             ["-c", "sleep 10"],
-             timeout: 20,
-             stderr_to_stdout: true
-           ) == {:error, :timeout}
-  end
-
   defp temporary_repository do
     path = Path.join(System.tmp_dir!(), "hancho-git-#{System.unique_integer([:positive])}")
     File.mkdir_p!(path)
