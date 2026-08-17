@@ -28,6 +28,14 @@ defmodule Hancho.Project do
     }
   end
 
+  @spec log_path(t(), String.t()) :: {:ok, String.t()} | {:error, :unsafe_path}
+  def log_path(%__MODULE__{} = project, relative_path) do
+    case Path.safe_relative(relative_path, project.logs_path) do
+      {:ok, safe_path} -> {:ok, Path.join(project.logs_path, safe_path)}
+      :error -> {:error, :unsafe_path}
+    end
+  end
+
   @spec discover(keyword()) :: {:ok, t()} | {:error, :git_not_found | :not_git_repository}
   def discover(options \\ []) do
     cwd = Keyword.get(options, :cwd, File.cwd!())

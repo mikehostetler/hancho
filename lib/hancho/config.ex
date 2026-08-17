@@ -9,15 +9,16 @@ defmodule Hancho.Config do
   """
 
   alias Hancho.Config.Error
+  alias Hancho.Config.Logs
   alias Hancho.Config.Repo
   alias Hancho.Project
 
   @current_version 1
 
-  @enforce_keys [:version, :repo]
-  defstruct [:version, :repo]
+  @enforce_keys [:version, :repo, :logs]
+  defstruct [:version, :repo, :logs]
 
-  @type t :: %__MODULE__{version: pos_integer(), repo: Repo.t()}
+  @type t :: %__MODULE__{version: pos_integer(), repo: Repo.t(), logs: Logs.t()}
   @type key :: String.t()
 
   @spec current_version() :: pos_integer()
@@ -82,7 +83,18 @@ defmodule Hancho.Config do
   def to_map(%__MODULE__{} = config) do
     %{
       "version" => config.version,
-      "repo" => %{"path" => config.repo.path}
+      "repo" => %{"path" => config.repo.path},
+      "logs" => %{
+        "enabled" => config.logs.enabled,
+        "path" => config.logs.path,
+        "format" => Atom.to_string(config.logs.format),
+        "console" => config.logs.console,
+        "include_internal" => config.logs.include_internal,
+        "sync_interval_ms" => config.logs.sync_interval_ms,
+        "max_bytes" => config.logs.max_bytes,
+        "max_files" => config.logs.max_files,
+        "compress" => config.logs.compress
+      }
     }
   end
 
@@ -123,10 +135,13 @@ defmodule Hancho.Config do
       )
       |> Zoi.default(%{"path" => project.root})
 
+    logs = logs_schema()
+
     Zoi.map(
       %{
         "version" => Zoi.literal(@current_version) |> Zoi.default(@current_version),
-        "repo" => repo
+        "repo" => repo,
+        "logs" => logs
       },
       unrecognized_keys: :error
     )
@@ -135,7 +150,71 @@ defmodule Hancho.Config do
   defp build(values, project) do
     %__MODULE__{
       version: values["version"],
-      repo: %Repo{path: Path.expand(values["repo"]["path"], project.root)}
+      repo: %Repo{path: Path.expand(values["repo"]["path"], project.root)},
+      logs: build_logs(values["logs"])
+    }
+  end
+
+  defp logs_schema do
+    defaults = %{
+      "enabled" => true,
+      "path" => "factory.jsonl",
+      "format" => "jsonl",
+      "console" => true,
+      "include_internal" => false,
+      "sync_interval_ms" => 1_000,
+      "max_bytes" => 10_485_760,
+      "max_files" => 5,
+      "compress" => true
+    }
+
+    Zoi.map(
+      %{
+        "enabled" => Zoi.boolean() |> Zoi.default(defaults["enabled"]),
+        "path" => safe_log_path_schema(defaults["path"]),
+        "format" => Zoi.enum(["jsonl", "text"]) |> Zoi.default(defaults["format"]),
+        "console" => Zoi.boolean() |> Zoi.default(defaults["console"]),
+        "include_internal" => Zoi.boolean() |> Zoi.default(defaults["include_internal"]),
+        "sync_interval_ms" =>
+          Zoi.integer() |> Zoi.min(0) |> Zoi.default(defaults["sync_interval_ms"]),
+        "max_bytes" => Zoi.integer() |> Zoi.positive() |> Zoi.default(defaults["max_bytes"]),
+        "max_files" => Zoi.integer() |> Zoi.min(0) |> Zoi.default(defaults["max_files"]),
+        "compress" => Zoi.boolean() |> Zoi.default(defaults["compress"])
+      },
+      unrecognized_keys: :error
+    )
+    |> Zoi.default(defaults)
+  end
+
+  defp safe_log_path_schema(default) do
+    Zoi.string()
+    |> Zoi.min(1)
+    |> Zoi.refine(fn path ->
+      case Path.safe_relative(path, ".") do
+        {:ok, relative} when relative in ["", "."] ->
+          {:error, "must name a file inside .hancho/logs"}
+
+        {:ok, _relative} ->
+          :ok
+
+        :error ->
+          {:error, "must be relative to .hancho/logs"}
+      end
+    end)
+    |> Zoi.default(default)
+  end
+
+  defp build_logs(values) do
+    %Logs{
+      enabled: values["enabled"],
+      path: values["path"],
+      format: String.to_existing_atom(values["format"]),
+      console: values["console"],
+      include_internal: values["include_internal"],
+      sync_interval_ms: values["sync_interval_ms"],
+      max_bytes: values["max_bytes"],
+      max_files: values["max_files"],
+      compress: values["compress"]
     }
   end
 

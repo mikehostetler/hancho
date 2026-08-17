@@ -11,8 +11,18 @@ defmodule Hancho.ConfigTest do
     assert {:ok, %Config{} = config} = Config.load(project)
     assert config.version == 1
     assert config.repo.path == project.root
+    assert config.logs.enabled
+    assert config.logs.path == "factory.jsonl"
+    assert config.logs.format == :jsonl
+    assert config.logs.console
+    refute config.logs.include_internal
+    assert config.logs.sync_interval_ms == 1_000
+    assert config.logs.max_bytes == 10_485_760
+    assert config.logs.max_files == 5
+    assert config.logs.compress
     assert Config.get(config, "version") == 1
     assert Config.get(config, "repo.path") == project.root
+    assert Config.get(config, "logs.format") == :jsonl
   end
 
   test "reads dotted TOML keys and normalizes a relative repository path" do
@@ -31,6 +41,51 @@ defmodule Hancho.ConfigTest do
 
     assert {:ok, config} = Config.load(project)
     assert config.repo.path == project.root
+    assert config.logs.path == "factory.jsonl"
+  end
+
+  test "reads logging options" do
+    project = temporary_project()
+
+    write_config(
+      project,
+      """
+      version = 1
+
+      [logs]
+      enabled = false
+      path = "runs/activity.log"
+      format = "text"
+      console = false
+      include_internal = true
+      sync_interval_ms = 0
+      max_bytes = 2048
+      max_files = 2
+      compress = false
+      """
+    )
+
+    assert {:ok, config} = Config.load(project)
+    refute config.logs.enabled
+    assert config.logs.path == "runs/activity.log"
+    assert config.logs.format == :text
+    refute config.logs.console
+    assert config.logs.include_internal
+    assert config.logs.sync_interval_ms == 0
+    assert config.logs.max_bytes == 2048
+    assert config.logs.max_files == 2
+    refute config.logs.compress
+  end
+
+  test "rejects logging paths outside the local log directory" do
+    project = temporary_project()
+
+    for path <- ["../factory.log", "/tmp/factory.log", "."] do
+      write_config(project, "version = 1\nlogs.path = #{inspect(path)}\n")
+
+      assert {:error, %Error{kind: :validation} = error} = Config.load(project)
+      assert error.message =~ "logs.path"
+    end
   end
 
   test "provides default values for missing lookup keys" do
@@ -80,6 +135,7 @@ defmodule Hancho.ConfigTest do
     assert {:ok, contents} = Config.encode(config)
     assert contents =~ "version = 1"
     assert contents =~ "[repo]"
+    assert contents =~ "[logs]"
     assert {:ok, ^config} = Config.decode(contents, project)
   end
 

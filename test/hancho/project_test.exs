@@ -22,6 +22,16 @@ defmodule Hancho.ProjectTest do
     assert project.config_path == "/work/repo/.hancho/config.toml"
     assert project.logs_path == "/work/repo/.hancho/logs"
     assert project.state_path == "/work/repo/.hancho/state"
+
+    assert Hancho.Project.log_path(project, "runs/factory.jsonl") ==
+             {:ok, "/work/repo/.hancho/logs/runs/factory.jsonl"}
+  end
+
+  test "rejects a log path outside the repository log directory" do
+    project = Hancho.Project.new("/repo")
+
+    assert Hancho.Project.log_path(project, "../state/data") == {:error, :unsafe_path}
+    assert Hancho.Project.log_path(project, "/tmp/factory.log") == {:error, :unsafe_path}
   end
 
   test "reports missing Git and a missing repository" do
