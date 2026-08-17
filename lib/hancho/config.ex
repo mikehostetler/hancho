@@ -208,7 +208,7 @@ defmodule Hancho.Config do
     %Logs{
       enabled: values["enabled"],
       path: values["path"],
-      format: String.to_existing_atom(values["format"]),
+      format: log_format(values["format"]),
       console: values["console"],
       include_internal: values["include_internal"],
       sync_interval_ms: values["sync_interval_ms"],
@@ -217,6 +217,9 @@ defmodule Hancho.Config do
       compress: values["compress"]
     }
   end
+
+  defp log_format("jsonl"), do: :jsonl
+  defp log_format("text"), do: :text
 
   defp fetch_segments(value, []), do: {:ok, value}
 
