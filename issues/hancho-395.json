@@ -2,6 +2,7 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T19:16:16Z",
   "created": "2026-08-17T19:06:28Z",
   "description": "Make the existing --verbose option stream useful normalized Jido.Harness provider events to the console during implementation. Keep normal mode unchanged. Summarize tool results instead of dumping large or sensitive payloads.",
   "id": "hancho-395",
@@ -13,7 +14,7 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Stream harness events in verbose mode",
   "type": "task",
   "updated_at": "2026-08-17T19:16:16Z"
