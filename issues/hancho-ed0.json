@@ -2,13 +2,15 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T00:39:38Z",
+  "close_reason": "All Hancho data structs now derive types, required keys, and fields from public Zoi schemas; constructors parse through those schemas and direct tests enforce the rule.",
   "created": "2026-08-17T00:33:11Z",
   "description": "Define and validate every Hancho data struct through Zoi while preserving public behavior and adding constructor validation tests.",
   "id": "hancho-ed0",
   "labels": [],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Convert Hancho structs to Zoi",
   "type": "task",
-  "updated_at": "2026-08-17T00:33:26Z"
+  "updated_at": "2026-08-17T00:39:38Z"
 }
