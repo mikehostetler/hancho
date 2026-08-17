@@ -1,216 +1,240 @@
 defmodule Hancho.Workflow.Store do
-  @moduledoc "Stores durable workflow state in the repository-local SQLite database."
+  @moduledoc "Stores durable workflow state in the repository-local Bedrock cluster."
 
-  alias Exqlite.Result
   alias Hancho.Log.Event
+  alias Hancho.State.{Bedrock, Repo}
 
-  @schema [
-    """
-    CREATE TABLE IF NOT EXISTS workflow_runs (
-      id TEXT PRIMARY KEY,
-      workflow_name TEXT NOT NULL,
-      workflow_version INTEGER NOT NULL,
-      status TEXT NOT NULL,
-      current_step TEXT,
-      input_json TEXT NOT NULL,
-      outputs_json TEXT NOT NULL,
-      started_at TEXT NOT NULL,
-      finished_at TEXT,
-      error_json TEXT
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS workflow_steps (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      run_id TEXT NOT NULL,
-      position INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      action TEXT NOT NULL,
-      status TEXT NOT NULL,
-      params_json TEXT NOT NULL,
-      result_json TEXT,
-      started_at TEXT NOT NULL,
-      finished_at TEXT,
-      error_json TEXT,
-      UNIQUE(run_id, position),
-      FOREIGN KEY(run_id) REFERENCES workflow_runs(id)
-    )
-    """,
-    "CREATE INDEX IF NOT EXISTS workflow_steps_run_id ON workflow_steps(run_id)"
-  ]
+  @prefix "hancho/workflow/runs/"
 
-  @spec open(String.t()) :: {:ok, pid()} | {:error, term()}
+  @spec open(String.t()) :: {:ok, String.t()} | {:error, term()}
   def open(path) do
-    with :ok <- Hancho.Native.ensure_exqlite(Path.dirname(path)),
-         {:ok, _applications} <- Application.ensure_all_started(:exqlite),
-         :ok <- File.mkdir_p(Path.dirname(path)),
-         {:ok, connection} <- Exqlite.start_link(database: path),
-         :ok <- migrate(connection) do
-      {:ok, connection}
+    case Bedrock.open(path) do
+      :ok -> {:ok, Path.expand(path)}
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  @spec close(pid()) :: :ok
-  def close(connection) when is_pid(connection) do
-    if Process.alive?(connection), do: GenServer.stop(connection, :normal, :infinity)
-    :ok
-  end
+  @spec close(String.t()) :: :ok | {:error, term()}
+  def close(store), do: Bedrock.flush(store)
 
-  @spec create_run(pid(), String.t(), Hancho.Workflow.Definition.t(), map()) ::
+  @spec create_run(String.t(), String.t(), Hancho.Workflow.Definition.t(), map()) ::
           :ok | {:error, term()}
-  def create_run(connection, id, definition, input) do
-    execute(
-      connection,
-      """
-      INSERT INTO workflow_runs
-        (id, workflow_name, workflow_version, status, input_json, outputs_json, started_at)
-      VALUES (?, ?, ?, 'running', ?, '{}', ?)
-      """,
-      [id, definition.name, definition.version, encode(input), now()]
-    )
+  def create_run(store, id, definition, input) do
+    transact(store, fn ->
+      key = run_key(id)
+
+      if Repo.get(key) do
+        Repo.rollback(:already_exists)
+      else
+        Repo.put(
+          key,
+          encode!(%{
+            "id" => id,
+            "workflow_name" => definition.name,
+            "workflow_version" => definition.version,
+            "status" => "running",
+            "current_step" => nil,
+            "input_json" => encode!(input),
+            "started_at" => now(),
+            "finished_at" => nil,
+            "error_json" => nil
+          })
+        )
+      end
+    end)
   end
 
-  @spec start_step(pid(), String.t(), non_neg_integer(), Hancho.Workflow.Step.t(), map()) ::
+  @spec start_step(String.t(), String.t(), non_neg_integer(), Hancho.Workflow.Step.t(), map()) ::
           :ok | {:error, term()}
-  def start_step(connection, run_id, position, step, params) do
-    with :ok <-
-           execute(
-             connection,
-             """
-             INSERT INTO workflow_steps
-               (run_id, position, name, action, status, params_json, started_at)
-             VALUES (?, ?, ?, ?, 'running', ?, ?)
-             """,
-             [run_id, position, step.name, step.action, encode(params), now()]
-           ) do
-      execute(
-        connection,
-        "UPDATE workflow_runs SET current_step = ? WHERE id = ?",
-        [step.name, run_id]
-      )
-    end
+  def start_step(store, run_id, position, step, params) do
+    update_run(store, run_id, fn run ->
+      key = step_key(run_id, position)
+
+      if Repo.get(key) do
+        Repo.rollback({:step_already_exists, position})
+      else
+        Repo.put(
+          key,
+          encode!(%{
+            "position" => position,
+            "name" => step.name,
+            "action" => step.action,
+            "status" => "running",
+            "params_json" => encode!(params),
+            "result_json" => nil,
+            "started_at" => now(),
+            "finished_at" => nil,
+            "error_json" => nil
+          })
+        )
+
+        Map.put(run, "current_step", step.name)
+      end
+    end)
   end
 
-  @spec complete_step(pid(), String.t(), non_neg_integer(), map(), map()) ::
+  @spec complete_step(String.t(), String.t(), non_neg_integer(), map(), map()) ::
           :ok | {:error, term()}
-  def complete_step(connection, run_id, position, result, outputs) do
-    with :ok <-
-           execute(
-             connection,
-             """
-             UPDATE workflow_steps
-             SET status = 'completed', result_json = ?, finished_at = ?
-             WHERE run_id = ? AND position = ?
-             """,
-             [encode(result), now(), run_id, position]
-           ) do
-      execute(
-        connection,
-        "UPDATE workflow_runs SET outputs_json = ? WHERE id = ?",
-        [encode(outputs), run_id]
-      )
-    end
+  def complete_step(store, run_id, position, result, _outputs) do
+    update_run_and_step(store, run_id, position, fn run, step ->
+      completed_step =
+        step
+        |> Map.put("status", "completed")
+        |> Map.put("result_json", encode!(result))
+        |> Map.put("finished_at", now())
+
+      {run, completed_step}
+    end)
   end
 
-  @spec complete_run(pid(), String.t(), map()) :: :ok | {:error, term()}
-  def complete_run(connection, run_id, outputs) do
-    execute(
-      connection,
-      """
-      UPDATE workflow_runs
-      SET status = 'completed', current_step = NULL, outputs_json = ?, finished_at = ?
-      WHERE id = ?
-      """,
-      [encode(outputs), now(), run_id]
-    )
+  @spec complete_run(String.t(), String.t(), map()) :: :ok | {:error, term()}
+  def complete_run(store, run_id, _outputs) do
+    update_run(store, run_id, fn run ->
+      run
+      |> Map.put("status", "completed")
+      |> Map.put("current_step", nil)
+      |> Map.put("finished_at", now())
+    end)
   end
 
-  @spec fail_step(pid(), String.t(), non_neg_integer(), term()) :: :ok | {:error, term()}
-  def fail_step(connection, run_id, position, error) do
-    execute(
-      connection,
-      """
-      UPDATE workflow_steps
-      SET status = 'stopped', error_json = ?, finished_at = ?
-      WHERE run_id = ? AND position = ?
-      """,
-      [encode(error), now(), run_id, position]
-    )
+  @spec fail_step(String.t(), String.t(), non_neg_integer(), term()) :: :ok | {:error, term()}
+  def fail_step(store, run_id, position, error) do
+    update_run_and_step(store, run_id, position, fn run, step ->
+      stopped_step =
+        step
+        |> Map.put("status", "stopped")
+        |> Map.put("error_json", encode!(error))
+        |> Map.put("finished_at", now())
+
+      {run, stopped_step}
+    end)
   end
 
-  @spec fail_run(pid(), String.t(), String.t(), map(), term()) :: :ok | {:error, term()}
-  def fail_run(connection, run_id, step_name, outputs, error) do
-    execute(
-      connection,
-      """
-      UPDATE workflow_runs
-      SET status = 'stopped', current_step = ?, outputs_json = ?, error_json = ?, finished_at = ?
-      WHERE id = ?
-      """,
-      [step_name, encode(outputs), encode(error), now(), run_id]
-    )
+  @spec fail_run(String.t(), String.t(), String.t(), map(), term()) :: :ok | {:error, term()}
+  def fail_run(store, run_id, step_name, _outputs, error) do
+    update_run(store, run_id, fn run ->
+      run
+      |> Map.put("status", "stopped")
+      |> Map.put("current_step", step_name)
+      |> Map.put("error_json", encode!(error))
+      |> Map.put("finished_at", now())
+    end)
   end
 
-  @spec fetch_run(pid(), String.t()) :: {:ok, map()} | {:error, term()}
-  def fetch_run(connection, id) do
-    query_one(
-      connection,
-      """
-      SELECT id, workflow_name, workflow_version, status, current_step,
-             input_json, outputs_json, started_at, finished_at, error_json
-      FROM workflow_runs WHERE id = ?
-      """,
-      [id]
-    )
+  @spec fetch_run(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def fetch_run(store, id) do
+    transact(store, fn ->
+      case Repo.get(run_key(id)) do
+        nil ->
+          Repo.rollback(:not_found)
+
+        encoded ->
+          with {:ok, run} <- decode(encoded),
+               {:ok, steps} <- read_steps(id) do
+            outputs =
+              steps
+              |> Enum.filter(&(&1["status"] == "completed"))
+              |> Map.new(fn step ->
+                {step["name"], decode_optional!(step["result_json"])}
+              end)
+
+            {:ok, Map.put(run, "outputs_json", encode!(outputs))}
+          else
+            {:error, reason} -> Repo.rollback(reason)
+          end
+      end
+    end)
   end
 
-  @spec list_steps(pid(), String.t()) :: {:ok, [map()]} | {:error, term()}
-  def list_steps(connection, run_id) do
-    case Exqlite.query(
-           connection,
-           """
-           SELECT position, name, action, status, params_json, result_json,
-                  started_at, finished_at, error_json
-           FROM workflow_steps WHERE run_id = ? ORDER BY position
-           """,
-           [run_id]
-         ) do
-      {:ok, %Result{columns: columns, rows: rows}} ->
-        {:ok, Enum.map(rows, &row_map(columns, &1))}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp migrate(connection) do
-    with :ok <- execute(connection, "PRAGMA journal_mode = WAL"),
-         :ok <- execute(connection, "PRAGMA foreign_keys = ON") do
-      Enum.reduce_while(@schema, :ok, fn statement, :ok ->
-        case execute(connection, statement) do
-          :ok -> {:cont, :ok}
-          {:error, reason} -> {:halt, {:error, reason}}
+  @spec list_steps(String.t(), String.t()) :: {:ok, [map()]} | {:error, term()}
+  def list_steps(store, run_id) do
+    transact(store, fn ->
+      if Repo.get(run_key(run_id)) do
+        case read_steps(run_id) do
+          {:ok, steps} -> {:ok, steps}
+          {:error, reason} -> Repo.rollback(reason)
         end
-      end)
+      else
+        Repo.rollback(:not_found)
+      end
+    end)
+  end
+
+  defp update_run(store, run_id, function) do
+    transact(store, fn ->
+      key = run_key(run_id)
+
+      with {:ok, run} <- get(key) do
+        case function.(run) do
+          %{} = updated -> Repo.put(key, encode!(updated))
+          other -> other
+        end
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  defp update_run_and_step(store, run_id, position, function) do
+    transact(store, fn ->
+      run_key = run_key(run_id)
+      step_key = step_key(run_id, position)
+
+      with {:ok, run} <- get(run_key),
+           {:ok, step} <- get(step_key) do
+        {updated_run, updated_step} = function.(run, step)
+        Repo.put(run_key, encode!(updated_run))
+        Repo.put(step_key, encode!(updated_step))
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  defp get(key) do
+    case Repo.get(key) do
+      nil -> {:error, :not_found}
+      encoded -> decode(encoded)
     end
   end
 
-  defp execute(connection, statement, params \\ []) do
-    case Exqlite.query(connection, statement, params) do
-      {:ok, %Result{}} -> :ok
-      {:error, reason} -> {:error, reason}
+  defp read_steps(run_id) do
+    prefix = step_prefix(run_id)
+
+    prefix
+    |> then(&Repo.get_range({&1, &1 <> <<255>>}))
+    |> Enum.reduce_while({:ok, []}, fn {_key, encoded}, {:ok, steps} ->
+      case decode(encoded) do
+        {:ok, step} -> {:cont, {:ok, [step | steps]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, steps} -> {:ok, Enum.sort_by(steps, & &1["position"])}
+      error -> error
     end
   end
 
-  defp query_one(connection, statement, params) do
-    case Exqlite.query(connection, statement, params) do
-      {:ok, %Result{columns: columns, rows: [row]}} -> {:ok, row_map(columns, row)}
-      {:ok, %Result{rows: []}} -> {:error, :not_found}
-      {:error, reason} -> {:error, reason}
+  defp run_key(run_id), do: @prefix <> encoded_id(run_id) <> "/run"
+  defp step_prefix(run_id), do: @prefix <> encoded_id(run_id) <> "/steps/"
+
+  defp step_key(run_id, position) do
+    step_prefix(run_id) <> String.pad_leading(Integer.to_string(position), 12, "0")
+  end
+
+  defp encoded_id(run_id), do: Base.url_encode64(run_id, padding: false)
+  defp transact(store, function), do: Bedrock.transaction(store, function)
+
+  defp encode!(value), do: value |> Event.normalize() |> Jason.encode!()
+
+  defp decode(value) do
+    case Jason.decode(value) do
+      {:ok, decoded} -> {:ok, decoded}
+      {:error, reason} -> {:error, {:invalid_state, Exception.message(reason)}}
     end
   end
 
-  defp row_map(columns, row), do: columns |> Enum.zip(row) |> Map.new()
-  defp encode(value), do: value |> Event.normalize() |> Jason.encode!()
+  defp decode_optional!(nil), do: nil
+  defp decode_optional!(value), do: Jason.decode!(value)
   defp now, do: DateTime.utc_now() |> DateTime.to_iso8601()
 end

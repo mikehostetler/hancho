@@ -72,6 +72,6 @@ defmodule Hancho.CLITest do
     assert_received {:workflow_input, project,
                      %{"repo_path" => "/repo", "issue_id" => "hancho-123"}}
 
-    assert project.database_path == "/repo/.hancho/hancho.sqlite3"
+    assert project.bedrock_path == "/repo/.hancho/bedrock"
   end
 end

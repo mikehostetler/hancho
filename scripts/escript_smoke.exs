@@ -61,15 +61,24 @@ try do
     raise "workflow did not report its stopped step"
   end
 
-  unless File.exists?(Path.join(repository, ".hancho/hancho.sqlite3")) do
-    raise "escript workflow did not create its SQLite database"
+  bedrock_path = Path.join(repository, ".hancho/bedrock")
+
+  unless File.dir?(bedrock_path) do
+    raise "escript workflow did not create its Bedrock storage folder"
   end
 
-  native_libraries =
-    Path.wildcard(Path.join(repository, ".hancho/native/exqlite/priv/sqlite3_nif.*"))
+  unless File.exists?(Path.join(bedrock_path, "bedrock.cluster")) do
+    raise "escript workflow did not create its Bedrock cluster descriptor"
+  end
 
-  unless native_libraries != [] do
-    raise "escript workflow did not extract the Exqlite native library"
+  {second_run_output, 1} =
+    System.cmd(hancho, ["run", "implement", "missing-issue"],
+      cd: repository,
+      stderr_to_stdout: true
+    )
+
+  unless second_run_output =~ "stopped at preflight" do
+    raise "a new escript process could not reopen Bedrock state"
   end
 after
   File.rm_rf!(repository)

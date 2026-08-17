@@ -127,7 +127,7 @@ defmodule Hancho.WorkflowTest do
              {:error, "Parameter reference was not found: $steps.missing.value"}
   end
 
-  test "runs steps in order and keeps completed state in SQLite" do
+  test "runs steps in order and keeps completed state in Bedrock" do
     {project, workflow_path} = project_with_workflow(successful_workflow())
     assert File.exists?(workflow_path)
 
@@ -136,7 +136,8 @@ defmodule Hancho.WorkflowTest do
                run_id: "run-success",
                registry: Registry,
                executor: Executor,
-               log: :disabled
+               log: :disabled,
+               flush_state: false
              )
 
     assert result.status == :completed
@@ -146,17 +147,17 @@ defmodule Hancho.WorkflowTest do
              "second" => %{"value" => 8}
            }
 
-    assert {:ok, database} = Store.open(project.database_path)
-    assert {:ok, run} = Store.fetch_run(database, "run-success")
+    assert {:ok, store} = Store.open(project.bedrock_path)
+    assert {:ok, run} = Store.fetch_run(store, "run-success")
     assert run["status"] == "completed"
     assert Jason.decode!(run["outputs_json"]) == result.outputs
 
-    assert {:ok, steps} = Store.list_steps(database, "run-success")
+    assert {:ok, steps} = Store.list_steps(store, "run-success")
     assert Enum.map(steps, & &1["status"]) == ["completed", "completed"]
-    Store.close(database)
+    Store.close(store)
   end
 
-  test "stops on a missing parameter and keeps the Andon state in SQLite" do
+  test "stops on a missing parameter and keeps the Andon state in Bedrock" do
     {project, _workflow_path} = project_with_workflow(successful_workflow())
 
     assert {:ok, result} =
@@ -164,21 +165,22 @@ defmodule Hancho.WorkflowTest do
                run_id: "run-stopped",
                registry: Registry,
                executor: MissingOutputExecutor,
-               log: :disabled
+               log: :disabled,
+               flush_state: false
              )
 
     assert result.status == :stopped
     assert result.current_step == "second"
     assert result.error =~ "$steps.first.value"
 
-    assert {:ok, database} = Store.open(project.database_path)
-    assert {:ok, run} = Store.fetch_run(database, "run-stopped")
+    assert {:ok, store} = Store.open(project.bedrock_path)
+    assert {:ok, run} = Store.fetch_run(store, "run-stopped")
     assert run["status"] == "stopped"
     assert run["current_step"] == "second"
 
-    assert {:ok, steps} = Store.list_steps(database, "run-stopped")
+    assert {:ok, steps} = Store.list_steps(store, "run-stopped")
     assert Enum.map(steps, & &1["status"]) == ["completed", "stopped"]
-    Store.close(database)
+    Store.close(store)
   end
 
   test "runs the default workflow through all approved actions" do
@@ -199,6 +201,7 @@ defmodule Hancho.WorkflowTest do
                %{"repo_path" => repository, "issue_id" => "hancho-123"},
                run_id: "full-run",
                log: :disabled,
+               flush_state: false,
                services: %{beadwork: Beadwork, harness: Harness, command: Command}
              )
 
@@ -208,10 +211,10 @@ defmodule Hancho.WorkflowTest do
     assert File.read!(Path.join(repository, "implemented.txt")) == "implemented\n"
     refute File.exists?(Path.join(project.worktrees_path, "full-run"))
 
-    assert {:ok, database} = Store.open(project.database_path)
-    assert {:ok, steps} = Store.list_steps(database, "full-run")
+    assert {:ok, store} = Store.open(project.bedrock_path)
+    assert {:ok, steps} = Store.list_steps(store, "full-run")
     assert Enum.all?(steps, &(&1["status"] == "completed"))
-    Store.close(database)
+    Store.close(store)
   end
 
   defp successful_workflow do
@@ -242,7 +245,12 @@ defmodule Hancho.WorkflowTest do
   defp temporary_directory do
     path = Path.join(System.tmp_dir!(), "hancho-workflow-#{System.unique_integer([:positive])}")
     File.mkdir_p!(path)
-    on_exit(fn -> File.rm_rf!(path) end)
+
+    on_exit(fn ->
+      Hancho.State.Bedrock.reset()
+      File.rm_rf!(path)
+    end)
+
     path
   end
 

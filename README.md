@@ -81,12 +81,14 @@ Workflow structure does not use `config.toml`. Edit the repository-local YAML
 file to change action parameters. Hancho permits only action modules in
 `Hancho.Workflow.Registry`; it does not create atoms from YAML module names.
 
-Hancho records every run and step in `.hancho/hancho.sqlite3`. A successful
-step saves its result before the next step starts. If a step fails, Hancho stops
-the line, records the failed step and error, and returns a nonzero exit status.
-It keeps a failed implementation worktree for inspection when cleanup has not
-started. The escript extracts its packaged Exqlite native library into
-`.hancho/native/` before it opens the database.
+Hancho records every run and step in a local Bedrock cluster at
+`.hancho/bedrock/`. A successful step saves its result in an atomic transaction
+before the next step starts. If a step fails, Hancho stops the line, records the
+failed step and error, and returns a nonzero exit status. It keeps a failed
+implementation worktree for inspection when cleanup has not started. Bedrock
+stores its cluster descriptor, coordinator, log, and storage-worker files in
+this repository-local folder. Before the command returns, Hancho closes
+Bedrock's five-second in-memory storage window and verifies a durability marker.
 
 ## Factory activity logs
 
@@ -134,8 +136,11 @@ Hancho uses [Beadwork](https://github.com/jallum/beadwork) for durable work trac
 Hancho uses [Jido.Harness](https://github.com/agentjido/jido_harness) as its normalized runtime for CLI coding agents.
 
 Hancho uses [Jido.Action](https://hex.pm/packages/jido_action) for validated
-workflow actions, [yaml_elixir](https://hex.pm/packages/yaml_elixir) for workflow
-definitions, and [Exqlite](https://hex.pm/packages/exqlite) for durable local
-workflow state.
+workflow actions and [yaml_elixir](https://hex.pm/packages/yaml_elixir) for
+workflow definitions. Hancho uses [Bedrock](https://github.com/bedrock-kv/bedrock)
+for durable, repository-local workflow state. The dependency points directly to
+the Bedrock 0.4.1 Git commit. During dependency compilation, Hancho applies the
+upstream duplicate-boundary fix with `scripts/patch_bedrock.exs`. The script
+fails if the pinned source no longer has the tested form.
 
 Hancho uses the [`git`](https://hex.pm/packages/git) package behind `Hancho.Git`. Git processes run through erlexec so Hancho can stop a timed-out command and its child processes.

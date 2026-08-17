@@ -10,11 +10,12 @@ defmodule Hancho.Workflow.Runner do
     store_api = Keyword.get(options, :store_api, Store)
 
     with {:ok, definition} <- loader.load(project, workflow_name),
-         {:ok, store} <- store_api.open(project.database_path) do
-      try do
-        run_with_store(project, definition, input, store, options)
-      after
-        store_api.close(store)
+         {:ok, store} <- store_api.open(project.bedrock_path) do
+      result = run_with_store(project, definition, input, store, options)
+
+      case close_store(store_api, store, options) do
+        :ok -> result
+        {:error, reason} -> {:error, {:state_flush_failed, reason}}
       end
     end
   end
@@ -55,6 +56,14 @@ defmodule Hancho.Workflow.Runner do
         with {:ok, config} <- Hancho.Config.load(project) do
           Hancho.Log.open(project, config, metadata: %{run_id: run_id})
         end
+    end
+  end
+
+  defp close_store(store_api, store, options) do
+    if Keyword.get(options, :flush_state, true) do
+      store_api.close(store)
+    else
+      :ok
     end
   end
 

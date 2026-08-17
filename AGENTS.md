@@ -23,8 +23,10 @@
 - Use `jido_action` for workflow actions and action parameter validation.
 - Keep action module resolution in an explicit allowlist. Do not create atoms
   from YAML action names.
-- Store durable workflow and step state in `.hancho/hancho.sqlite3` with
-  `exqlite`. Do not add a `.hancho/state/` folder.
+- Store durable workflow and step state in a Bedrock cluster at
+  `.hancho/bedrock/`. Keep all Bedrock descriptor, coordinator, log, and storage
+  worker files in that repository-local folder. Use atomic transactions for
+  state changes and flush the storage window before the CLI exits.
 - Keep the first workflow sequential and in the foreground. Stop on the first
   failed step and retain its durable state.
 - Use `erlexec` for operating-system process management.

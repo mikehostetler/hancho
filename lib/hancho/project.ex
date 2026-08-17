@@ -9,7 +9,7 @@ defmodule Hancho.Project do
               root: Zoi.string() |> Zoi.min(1),
               hancho_dir: Zoi.string() |> Zoi.min(1),
               config_path: Zoi.string() |> Zoi.min(1),
-              database_path: Zoi.string() |> Zoi.min(1),
+              bedrock_path: Zoi.string() |> Zoi.min(1),
               logs_path: Zoi.string() |> Zoi.min(1),
               workflows_path: Zoi.string() |> Zoi.min(1),
               worktrees_path: Zoi.string() |> Zoi.min(1)
@@ -33,7 +33,7 @@ defmodule Hancho.Project do
       root: root,
       hancho_dir: hancho_dir,
       config_path: Path.join(hancho_dir, "config.toml"),
-      database_path: Path.join(hancho_dir, "hancho.sqlite3"),
+      bedrock_path: Path.join(hancho_dir, "bedrock"),
       logs_path: Path.join(hancho_dir, "logs"),
       workflows_path: Path.join(hancho_dir, "workflows"),
       worktrees_path: Path.join(hancho_dir, "worktrees")

@@ -6,7 +6,7 @@ defmodule Hancho.MixProject do
       app: :hancho,
       version: "0.1.0",
       elixir: "~> 1.20",
-      escript: [main_module: Hancho.CLI, app: nil, include_priv_for: [:erlexec, :exqlite]],
+      escript: [main_module: Hancho.CLI, app: nil, include_priv_for: [:erlexec]],
       aliases: aliases(),
       test_coverage: [summary: [threshold: 65]],
       deps: deps()
@@ -23,8 +23,8 @@ defmodule Hancho.MixProject do
 
   defp deps do
     [
+      {:bedrock, github: "bedrock-kv/bedrock", ref: "0c8dba25ab30e57f0f4b60fe3b05f330eea18712"},
       {:erlexec, "~> 2.3.4", runtime: false},
-      {:exqlite, "~> 0.39"},
       {:git, "~> 0.7.0"},
       {:jason, "~> 1.4"},
       {:jido_action, "~> 2.3"},
@@ -38,6 +38,7 @@ defmodule Hancho.MixProject do
 
   defp aliases do
     [
+      compile: [&patch_bedrock/1, "compile"],
       check: [
         "format --check-formatted",
         "compile --warnings-as-errors",
@@ -46,5 +47,10 @@ defmodule Hancho.MixProject do
         "cmd elixir scripts/escript_smoke.exs"
       ]
     ]
+  end
+
+  defp patch_bedrock(_args) do
+    Code.require_file("scripts/patch_bedrock.exs", __DIR__)
+    Hancho.Build.PatchBedrock.run(Path.join(__DIR__, "deps/bedrock"))
   end
 end
