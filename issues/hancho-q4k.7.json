@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T15:51:19Z",
+  "description": "Add crash-window, stale lease, resume phase, timeout cancellation, large output, audit failure, concurrency, and cross-process tests. Make mix check run subprocess tests and smoke-test a production escript without test modules. Update documentation.",
+  "id": "hancho-q4k.7",
+  "labels": [],
+  "parent": "hancho-q4k",
+  "priority": 2,
+  "status": "open",
+  "title": "Add adversarial recovery and release checks",
+  "type": "task",
+  "updated_at": "2026-08-17T15:51:19Z"
+}
