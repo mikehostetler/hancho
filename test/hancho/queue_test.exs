@@ -63,6 +63,23 @@ defmodule Hancho.QueueTest do
     end
   end
 
+  defmodule UnresolvedBlockerBeadwork do
+    def ready(_options), do: {:ok, []}
+
+    def list_all(_options) do
+      {:ok,
+       [
+         %{
+           "id" => "task-blocked",
+           "type" => "task",
+           "status" => "open",
+           "blocked_by" => ["task-missing"],
+           "description" => "Queue ordinal: `10`"
+         }
+       ]}
+    end
+  end
+
   defmodule Reconciler do
     def initial(project, _options) do
       {:ok, %{repository: project.root, branch: "main", head: "head-0", worktrees: []}}
@@ -346,6 +363,32 @@ defmodule Hancho.QueueTest do
            ]
 
     refute File.exists?(project.bedrock_path)
+  end
+
+  test "selects a serial dependency chain in queue order" do
+    project = Hancho.Project.new(temporary_directory())
+
+    assert {:ok, preview} =
+             QueueRunner.preview(project, "implement", "beadwork-ready", 2,
+               beadwork: ContainerReadyBeadwork,
+               reconciler: Reconciler,
+               loader: PreviewLoader,
+               validate_environment: false
+             )
+
+    assert Enum.map(preview.issues, & &1["id"]) == ["task-next", "task-later"]
+  end
+
+  test "does not select a task with an unresolved blocker" do
+    project = Hancho.Project.new(temporary_directory())
+
+    assert {:error, "Beadwork has 0 ready tasks; 1 are required."} =
+             QueueRunner.preview(project, "implement", "beadwork-ready", 1,
+               beadwork: UnresolvedBlockerBeadwork,
+               reconciler: Reconciler,
+               loader: PreviewLoader,
+               validate_environment: false
+             )
   end
 
   test "fills an insufficient ready task result from all issues" do

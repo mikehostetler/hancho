@@ -179,8 +179,9 @@ workflow error stops the preview before a live run can start.
 
 If `bw ready` returns fewer tasks than the requested count, Hancho derives ready
 tasks from `bw list --all`. A task is ready when it is open or in progress and
-each named blocker is closed. Execution cards with a `Queue ordinal` in their
-description are selected in that order.
+each named blocker is closed or is an earlier task in the same serial queue.
+Execution cards with a `Queue ordinal` in their description are selected in
+that order. A task with another unresolved blocker is not selected.
 
 Hancho first reads `bw ready --json` and keeps ready items with the `task` type.
 It uses the full-list fallback described above only when that command returns

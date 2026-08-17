@@ -27,8 +27,9 @@ defmodule Hancho.Workflow.IssueSelector do
 
       ready =
         issues
-        |> Enum.filter(&ready_task_from_all?(&1, statuses))
+        |> Enum.filter(&ready_task?/1)
         |> Enum.sort_by(&queue_order/1)
+        |> select_serially_ready(statuses)
 
       {:ok, ready}
     end
@@ -59,8 +60,23 @@ defmodule Hancho.Workflow.IssueSelector do
     end
   end
 
-  defp ready_task_from_all?(issue, statuses) do
-    ready_task?(issue) and Enum.all?(issue.blocked_by, &(Map.get(statuses, &1) == "closed"))
+  defp select_serially_ready(issues, statuses) do
+    {selected, _selected_ids} =
+      Enum.reduce(issues, {[], MapSet.new()}, fn issue, {selected, selected_ids} ->
+        if blockers_ready?(issue, statuses, selected_ids) do
+          {[issue | selected], MapSet.put(selected_ids, issue.id)}
+        else
+          {selected, selected_ids}
+        end
+      end)
+
+    Enum.reverse(selected)
+  end
+
+  defp blockers_ready?(issue, statuses, selected_ids) do
+    Enum.all?(issue.blocked_by, fn blocker ->
+      Map.get(statuses, blocker) == "closed" or MapSet.member?(selected_ids, blocker)
+    end)
   end
 
   defp queue_order(issue) do
