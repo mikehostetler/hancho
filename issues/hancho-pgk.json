@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T18:08:39Z",
+  "description": "Allow a foreground queue to select a later open task when every non-closed blocker is already an earlier selected queue item. Preserve deterministic Queue ordinal order and reject unresolved blockers.",
+  "id": "hancho-pgk",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Select serial dependency chains",
+  "type": "task",
+  "updated_at": "2026-08-17T18:08:39Z"
+}
