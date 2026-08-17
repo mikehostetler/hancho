@@ -260,6 +260,15 @@ defmodule Hancho.CLI do
         "verify #{format_milliseconds(preview.settings.verification_timeout_ms)}"
     )
 
+    Enum.each(preview.settings.repairs, fn repair ->
+      noun = if repair.max_attempts == 1, do: "attempt", else: "attempts"
+
+      IO.puts(
+        "Repair: #{repair.step} via #{repair.provider}, #{repair.max_attempts} #{noun} " <>
+          "(#{Enum.join(repair.codes, ", ")})"
+      )
+    end)
+
     preview.issues
     |> Enum.with_index(1)
     |> Enum.each(fn {issue, position} ->
@@ -340,6 +349,12 @@ defmodule Hancho.CLI do
       IO.puts(
         "#{step.position + 1}. #{step.name}: #{step.status} (#{format_duration(step.duration_ms)})"
       )
+
+      Enum.each(Map.get(step, :repairs, []), fn repair ->
+        provider = repair["provider"] || "unknown provider"
+        attempt = repair["attempt"] || "?"
+        IO.puts("   Repair #{attempt}: #{repair["status"]} via #{provider}")
+      end)
     end)
 
     0

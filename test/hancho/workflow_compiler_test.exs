@@ -34,6 +34,11 @@ defmodule Hancho.WorkflowCompilerTest do
 
     assert compiled.provider == "codex"
     assert length(compiled.steps) == 11
+
+    assert Enum.find(compiled.steps, &(&1.name == "validate_scope")).environment == %{
+             repair_provider: "codex"
+           }
+
     assert Enum.any?(compiled.executables, &String.ends_with?(&1, "/mix"))
     assert compiled.prompt_files == ["implement.md"]
   end

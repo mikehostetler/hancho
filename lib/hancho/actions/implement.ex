@@ -1,5 +1,5 @@
 defmodule Hancho.Actions.Implement do
-  @moduledoc "Calls a CLI coding agent in the isolated worktree."
+  @moduledoc "Calls a CLI coding agent in the selected workspace."
 
   use Jido.Action,
     name: "hancho_implement",
@@ -80,9 +80,11 @@ defmodule Hancho.Actions.Implement do
   defp progress_callback(context) do
     fn progress ->
       with :ok <- persist_harness_run(context, progress) do
+        {label, event} = activity(context)
+
         _result =
-          Hancho.Audit.write(context.log, "Implementation progress: #{progress.phase}",
-            event: "implement.progress",
+          Hancho.Audit.write(context.log, "#{label} progress: #{progress.phase}",
+            event: event,
             metadata: progress
           )
 
@@ -95,7 +97,7 @@ defmodule Hancho.Actions.Implement do
     case Map.get(context, :effect_store) do
       %{api: api, store: store, run_id: run_id, step_position: position} ->
         if function_exported?(api, :fetch_step_operation, 4) do
-          case api.fetch_step_operation(store, run_id, position, "jido_harness.run") do
+          case api.fetch_step_operation(store, run_id, position, operation_kind(context)) do
             {:ok, nil} ->
               {:ok, nil}
 
@@ -127,7 +129,7 @@ defmodule Hancho.Actions.Implement do
             store,
             run_id,
             position,
-            "jido_harness.run",
+            operation_kind(context),
             harness_run_id,
             Map.drop(progress, [:harness_run_id])
           )
@@ -150,6 +152,12 @@ defmodule Hancho.Actions.Implement do
   end
 
   defp verbose_event_options(options, _context), do: options
+
+  defp activity(%{activity: :repair}), do: {"Repair", "repair.progress"}
+  defp activity(_context), do: {"Implementation", "implement.progress"}
+
+  defp operation_kind(%{activity: :repair}), do: "jido_harness.repair"
+  defp operation_kind(_context), do: "jido_harness.run"
 
   defp prior_run_id(%{id: id}), do: id
   defp prior_run_id(_prior_run), do: nil

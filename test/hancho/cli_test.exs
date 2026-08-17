@@ -78,7 +78,15 @@ defmodule Hancho.CLITest do
          settings: %{
            provider: "grok",
            implementation_timeout_ms: 1_800_000,
-           verification_timeout_ms: 600_000
+           verification_timeout_ms: 600_000,
+           repairs: [
+             %{
+               step: "validate_scope",
+               provider: "grok",
+               max_attempts: 1,
+               codes: ["changes_outside_allowed_scope"]
+             }
+           ]
          }
        }}
     end
@@ -429,6 +437,7 @@ defmodule Hancho.CLITest do
                "Retained worktrees: 1\n" <>
                "Provider: grok\n" <>
                "Timeouts: implement 1800000 ms, verify 600000 ms\n" <>
+               "Repair: validate_scope via grok, 1 attempt (changes_outside_allowed_scope)\n" <>
                "1. task-1 — First task\n"
 
     assert_received {:queue_preview, project, false}

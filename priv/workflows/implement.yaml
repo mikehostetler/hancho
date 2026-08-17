@@ -38,6 +38,12 @@ steps:
     params:
       worktree_path: "$steps.create_worktree.worktree_path"
       issue: "$steps.claim.issue"
+    on_error:
+      codes:
+        - changes_outside_allowed_scope
+      repair_with: codex
+      max_attempts: 1
+      retry_step: validate_scope
   - name: verify
     action: Hancho.Actions.Verify
     params:
@@ -47,6 +53,12 @@ steps:
       arguments:
         - test
       timeout_ms: 600000
+    on_error:
+      codes:
+        - verification_failed
+      repair_with: codex
+      max_attempts: 1
+      retry_step: verify
   - name: commit
     action: Hancho.Actions.Commit
     params:

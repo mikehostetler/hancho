@@ -21,6 +21,7 @@ defmodule Hancho.Workflow.StepRecord do
                 ]),
               params_json: Zoi.string(),
               operation_json: Zoi.string() |> Zoi.nullish() |> Zoi.default(nil),
+              repairs_json: Zoi.string() |> Zoi.default("[]"),
               result_json: Zoi.string() |> Zoi.nullish(),
               started_at: Zoi.string() |> Zoi.min(1),
               finished_at: Zoi.string() |> Zoi.nullish(),
@@ -45,6 +46,7 @@ defmodule Hancho.Workflow.StepRecord do
     |> Map.put_new("record_version", @record_version)
     |> Map.put_new("transition_version", 0)
     |> Map.put_new("operation_json", nil)
+    |> Map.put_new("repairs_json", "[]")
   end
 
   @spec to_map(t()) :: map()

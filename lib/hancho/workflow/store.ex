@@ -3,7 +3,7 @@ defmodule Hancho.Workflow.Store do
 
   alias Hancho.Log.Event
   alias Hancho.State.{Bedrock, Repo}
-  alias Hancho.Workflow.{EffectRecord, QueueRecord, RunRecord, StepRecord}
+  alias Hancho.Workflow.{EffectRecord, QueueRecord, Repair, RepairRecord, RunRecord, StepRecord}
 
   @prefix "hancho/workflow/runs/"
   @queue_prefix "hancho/workflow/queues/"
@@ -70,6 +70,7 @@ defmodule Hancho.Workflow.Store do
           "status" => "running",
           "params_json" => encode!(params),
           "operation_json" => nil,
+          "repairs_json" => "[]",
           "result_json" => nil,
           "started_at" => now(),
           "finished_at" => nil,
@@ -84,7 +85,12 @@ defmodule Hancho.Workflow.Store do
           encoded ->
             case decode_record(encoded, StepRecord) do
               {:ok, %{"status" => "retry_pending"} = existing} ->
-                put_step(key, Map.put(stored_step, "operation_json", existing["operation_json"]))
+                stored_step =
+                  stored_step
+                  |> Map.put("operation_json", existing["operation_json"])
+                  |> Map.put("repairs_json", existing["repairs_json"] || "[]")
+
+                put_step(key, stored_step)
                 Map.put(run, "current_step", step.name)
 
               _other ->
@@ -393,6 +399,57 @@ defmodule Hancho.Workflow.Store do
     end)
   end
 
+  @spec begin_step_repair(String.t(), String.t(), non_neg_integer(), map()) ::
+          :ok | {:error, term()}
+  def begin_step_repair(store, run_id, position, repair) do
+    update_run_and_step(store, run_id, position, fn run, step ->
+      with :ok <- status_in(run, ["running"], :run_not_running),
+           :ok <- status_in(step, ["running"], :step_not_running),
+           {:ok, repairs} <- Repair.decode_records(step["repairs_json"]),
+           {:ok, record} <- RepairRecord.new(repair),
+           :ok <- same_repair_step(record.step, step["name"]),
+           :ok <- repair_status(record.status, "running"),
+           :ok <- next_repair_attempt(repairs, record.attempt) do
+        updated = repairs ++ [RepairRecord.to_map(record)]
+        {run, Map.put(step, "repairs_json", encode!(updated))}
+      end
+    end)
+  end
+
+  @spec complete_step_repair(
+          String.t(),
+          String.t(),
+          non_neg_integer(),
+          pos_integer(),
+          map()
+        ) :: :ok | {:error, term()}
+  def complete_step_repair(store, run_id, position, attempt, result) do
+    update_repair(store, run_id, position, attempt, fn repairs, step_name ->
+      Repair.complete(repairs, step_name, attempt, result)
+    end)
+  end
+
+  @spec fail_step_repair(String.t(), String.t(), non_neg_integer(), pos_integer(), term()) ::
+          :ok | {:error, term()}
+  def fail_step_repair(store, run_id, position, attempt, error) do
+    update_repair(store, run_id, position, attempt, fn repairs, step_name ->
+      Repair.fail(repairs, step_name, attempt, error)
+    end)
+  end
+
+  @spec recover_step_repairs(String.t(), String.t(), non_neg_integer()) ::
+          :ok | {:error, term()}
+  def recover_step_repairs(store, run_id, position) do
+    update_run_and_step(store, run_id, position, fn run, step ->
+      with :ok <- status_in(run, ["running"], :run_not_running),
+           :ok <- status_in(step, ["running"], :step_not_running),
+           {:ok, repairs} <- Repair.decode_records(step["repairs_json"]) do
+        recovered = Repair.recover_open(repairs, step["name"])
+        {run, Map.put(step, "repairs_json", encode!(recovered))}
+      end
+    end)
+  end
+
   @spec create_queue(String.t(), String.t(), String.t(), String.t(), [map()], map()) ::
           :ok | {:error, term()}
   def create_queue(store, id, workflow, source, items, repository_state) do
@@ -576,6 +633,48 @@ defmodule Hancho.Workflow.Store do
       case get_queue(queue_key(id)) do
         {:ok, queue} -> {:ok, queue}
         {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  defp update_repair(store, run_id, position, attempt, function) do
+    update_run_and_step(store, run_id, position, fn run, step ->
+      with :ok <- status_in(run, ["running"], :run_not_running),
+           :ok <- status_in(step, ["running"], :step_not_running),
+           {:ok, repairs} <- Repair.decode_records(step["repairs_json"]),
+           {:ok, record} <- repair_attempt(repairs, attempt),
+           :ok <- status_in(record, ["running"], :repair_not_running),
+           updated <- function.(repairs, step["name"]),
+           :ok <- validate_repair_records(updated) do
+        {run, Map.put(step, "repairs_json", encode!(updated))}
+      end
+    end)
+  end
+
+  defp next_repair_attempt(repairs, attempt) do
+    if attempt == length(repairs) + 1,
+      do: :ok,
+      else: {:error, {:invalid_repair_attempt, attempt}}
+  end
+
+  defp same_repair_step(step, step), do: :ok
+  defp same_repair_step(_actual, _expected), do: {:error, :repair_step_changed}
+
+  defp repair_status(status, status), do: :ok
+  defp repair_status(_actual, _expected), do: {:error, :invalid_repair_status}
+
+  defp repair_attempt(repairs, attempt) do
+    case Enum.find(repairs, &(&1["attempt"] == attempt)) do
+      nil -> {:error, {:repair_attempt_not_found, attempt}}
+      record -> {:ok, record}
+    end
+  end
+
+  defp validate_repair_records(records) do
+    Enum.reduce_while(records, :ok, fn record, :ok ->
+      case RepairRecord.new(record) do
+        {:ok, _record} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, {:invalid_repair_record, reason}}}
       end
     end)
   end

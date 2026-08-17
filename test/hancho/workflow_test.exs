@@ -99,6 +99,68 @@ defmodule Hancho.WorkflowTest do
     end
   end
 
+  defmodule RepairRegistry do
+    def fetch("Hancho.Actions.UseRepository"), do: {:ok, :workspace}
+    def fetch("Hancho.Actions.ValidateScope"), do: {:ok, :scope_gate}
+  end
+
+  defmodule RepairExecutor do
+    def run(:workspace, %{"repo_path" => path}, _context) do
+      {:ok, %{mode: "in_place", workspace_path: path, baseline: "head-0"}}
+    end
+
+    def run(:scope_gate, %{"worktree_path" => path}, _context) do
+      if File.exists?(Path.join(path, "repair-complete")) do
+        {:ok, %{status: "checked", allowed_scope: ["lib/"], changed_paths: ["lib/ok.ex"]}}
+      else
+        {:error,
+         %{
+           code: "changes_outside_allowed_scope",
+           allowed_scope: ["lib/"],
+           unexpected_paths: ["notes.txt"]
+         }}
+      end
+    end
+
+    def run(Hancho.Actions.Implement, params, context) do
+      send(context.services.test_pid, {:repair_prompt, params.prompt, context.activity})
+      File.write!(Path.join(params.worktree_path, "repair-complete"), "repaired\n")
+
+      {:ok,
+       %{
+         provider: params.provider,
+         harness_run_id: "repair-harness-1",
+         status: "completed",
+         text: "repaired",
+         text_truncated: false
+       }}
+    end
+  end
+
+  defmodule ExhaustedRepairExecutor do
+    def run(:workspace, params, context), do: RepairExecutor.run(:workspace, params, context)
+
+    def run(:scope_gate, _params, _context) do
+      {:error,
+       %{
+         code: "changes_outside_allowed_scope",
+         allowed_scope: ["lib/"],
+         unexpected_paths: ["notes.txt"]
+       }}
+    end
+
+    def run(Hancho.Actions.Implement, params, _context) do
+      {:ok,
+       %{
+         provider: params.provider,
+         harness_run_id: "repair-harness-1",
+         status: "completed",
+         text: "attempted",
+         text_truncated: false
+       }}
+    end
+  end
+
   test "loads the default ordered workflow and validates action references" do
     directory = temporary_directory()
     path = Path.join(directory, "implement.yaml")
@@ -148,6 +210,51 @@ defmodule Hancho.WorkflowTest do
 
     assert {:error, message} = Definition.new(forward)
     assert message =~ "refers to unavailable step 'second'"
+  end
+
+  test "validates bounded repair policies on approved gates" do
+    assert {:ok, definition} =
+             Definition.new(%{
+               name: "repairable",
+               version: 1,
+               steps: [
+                 %{
+                   name: "verify",
+                   action: "Hancho.Actions.Verify",
+                   params: %{},
+                   on_error: %{
+                     codes: ["verification_failed"],
+                     repair_with: "grok",
+                     max_attempts: 1,
+                     retry_step: "verify"
+                   }
+                 }
+               ]
+             })
+
+    assert definition.steps |> hd() |> Map.fetch!(:on_error) |> Map.fetch!(:timeout_ms) == 600_000
+
+    invalid_retry =
+      definition.steps
+      |> hd()
+      |> Map.from_struct()
+      |> Map.update!(:on_error, &(&1 |> Map.from_struct() |> Map.put(:retry_step, "other")))
+
+    assert {:error, "Step 'verify' can retry only itself after a repair."} =
+             Definition.new(%{name: "invalid", version: 1, steps: [invalid_retry]})
+
+    unsupported =
+      invalid_retry
+      |> Map.update!(:on_error, fn policy ->
+        policy
+        |> Map.put(:retry_step, "verify")
+        |> Map.put(:codes, ["filesystem_out_of_sync"])
+      end)
+
+    assert {:error, message} =
+             Definition.new(%{name: "invalid", version: 1, steps: [unsupported]})
+
+    assert message =~ "unsupported repair codes"
   end
 
   test "resolves input, run, and prior-step values through nested data" do
@@ -307,6 +414,67 @@ defmodule Hancho.WorkflowTest do
     Store.close(store)
   end
 
+  test "repairs an approved gate failure and retries only that gate" do
+    {project, _workflow_path} = project_with_workflow(repair_workflow())
+
+    assert {:ok, result} =
+             Runner.run(project, "test", %{"repo_path" => project.root, "issue_id" => "task-1"},
+               run_id: "run-repair",
+               registry: RepairRegistry,
+               executor: RepairExecutor,
+               services: %{test_pid: self()},
+               validate_environment: false,
+               log: :disabled,
+               flush_state: false
+             )
+
+    assert result.status == :completed
+    assert result.outputs["validate_scope"]["status"] == "checked"
+    assert [%{"status" => "completed", "attempt" => 1} = repair] = result.artifacts["repairs"]
+    assert repair["provider"] == "grok"
+    assert repair["code"] == "changes_outside_allowed_scope"
+
+    assert_received {:repair_prompt, prompt, :repair}
+    assert prompt =~ "Repair the failed Hancho workflow gate"
+    assert prompt =~ "changes_outside_allowed_scope"
+    assert prompt =~ "Do not edit the task text, Allowed Scope"
+
+    assert {:ok, store} = Store.open(project.bedrock_path)
+    assert {:ok, steps} = Store.list_steps(store, "run-repair")
+    scope_step = Enum.find(steps, &(&1["name"] == "validate_scope"))
+    assert {:ok, [saved]} = Hancho.Workflow.Repair.decode_records(scope_step["repairs_json"])
+    assert saved["status"] == "completed"
+    assert saved["prompt_sha256"] == repair["prompt_sha256"]
+    Store.close(store)
+  end
+
+  test "stops after the configured repair attempt limit" do
+    {project, _workflow_path} = project_with_workflow(repair_workflow())
+
+    assert {:ok, result} =
+             Runner.run(project, "test", %{"repo_path" => project.root, "issue_id" => "task-1"},
+               run_id: "run-repair-exhausted",
+               registry: RepairRegistry,
+               executor: ExhaustedRepairExecutor,
+               validate_environment: false,
+               log: :disabled,
+               flush_state: false
+             )
+
+    assert result.status == :stopped
+    assert result.current_step == "validate_scope"
+    assert result.error["code"] == "changes_outside_allowed_scope"
+
+    assert result.error["repair"] == %{
+             "status" => "exhausted",
+             "attempts" => 1,
+             "max_attempts" => 1
+           }
+
+    assert [%{"status" => "completed", "attempt" => 1}] = result.artifacts["repairs"]
+    assert File.regular?(result.forensic_report)
+  end
+
   test "recovers a run that stopped after a step started" do
     {project, _workflow_path} = project_with_workflow(successful_workflow())
     {:ok, definition, source} = Loader.load_with_source(project, "test")
@@ -438,6 +606,28 @@ defmodule Hancho.WorkflowTest do
         action: Test.Second
         params:
           value: "$steps.first.value"
+    """
+  end
+
+  defp repair_workflow do
+    """
+    name: test
+    version: 1
+    steps:
+      - name: workspace
+        action: Hancho.Actions.UseRepository
+        params:
+          repo_path: "$input.repo_path"
+      - name: validate_scope
+        action: Hancho.Actions.ValidateScope
+        params:
+          worktree_path: "$steps.workspace.workspace_path"
+        on_error:
+          codes:
+            - changes_outside_allowed_scope
+          repair_with: grok
+          max_attempts: 1
+          retry_step: validate_scope
     """
   end
 

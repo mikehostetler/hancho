@@ -392,7 +392,8 @@ defmodule Hancho.QueueTest do
     assert preview.settings == %{
              provider: "grok",
              implementation_timeout_ms: 1_800_000,
-             verification_timeout_ms: 600_000
+             verification_timeout_ms: 600_000,
+             repairs: []
            }
 
     assert Enum.map(preview.compilation.steps, & &1.action) == [

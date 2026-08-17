@@ -1,7 +1,7 @@
 defmodule Hancho.Workflow.Definition do
   @moduledoc "A validated, sequential workflow definition."
 
-  alias Hancho.Workflow.Step
+  alias Hancho.Workflow.{OnError, Step}
 
   @schema Zoi.struct(
             __MODULE__,
@@ -24,9 +24,19 @@ defmodule Hancho.Workflow.Definition do
   def new(attributes) do
     with {:ok, definition} <- Zoi.parse(@schema, attributes),
          :ok <- validate_names(definition.steps),
-         :ok <- validate_references(definition.steps) do
+         :ok <- validate_references(definition.steps),
+         :ok <- validate_error_policies(definition.steps) do
       {:ok, definition}
     end
+  end
+
+  defp validate_error_policies(steps) do
+    Enum.reduce_while(steps, :ok, fn step, :ok ->
+      case OnError.validate(step.action, step.name, step.on_error) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp validate_names(steps) do

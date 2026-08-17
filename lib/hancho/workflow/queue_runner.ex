@@ -131,7 +131,18 @@ defmodule Hancho.Workflow.QueueRunner do
     %{
       provider: step_param(implement, "provider"),
       implementation_timeout_ms: step_param(implement, "timeout_ms"),
-      verification_timeout_ms: step_param(verify, "timeout_ms")
+      verification_timeout_ms: step_param(verify, "timeout_ms"),
+      repairs:
+        definition.steps
+        |> Enum.filter(& &1.on_error)
+        |> Enum.map(fn step ->
+          %{
+            step: step.name,
+            provider: step.on_error.repair_with,
+            max_attempts: step.on_error.max_attempts,
+            codes: step.on_error.codes
+          }
+        end)
     }
   end
 

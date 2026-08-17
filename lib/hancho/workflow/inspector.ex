@@ -96,8 +96,16 @@ defmodule Hancho.Workflow.Inspector do
       started_at: step["started_at"],
       finished_at: step["finished_at"],
       duration_ms: duration(step["started_at"], step["finished_at"]),
+      repairs: repair_records(step["repairs_json"]),
       error: decode_optional(step["error_json"])
     }
+  end
+
+  defp repair_records(json) do
+    case Hancho.Workflow.Repair.decode_records(json) do
+      {:ok, records} -> records
+      {:error, reason} -> [%{"status" => "invalid", "error" => inspect(reason)}]
+    end
   end
 
   defp duration(nil, _finished_at), do: nil

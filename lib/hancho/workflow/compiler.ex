@@ -10,7 +10,8 @@ defmodule Hancho.Workflow.Compiler do
 
     with :ok <- validate_references(definition.steps, input),
          {:ok, steps} <- compile_steps(project, definition.steps, registry, options),
-         :ok <- validate_workspace_contract(definition.steps) do
+         :ok <- validate_workspace_contract(definition.steps),
+         :ok <- validate_repair_contract(definition.steps) do
       {:ok,
        %{
          workflow: definition.name,
@@ -23,6 +24,33 @@ defmodule Hancho.Workflow.Compiler do
     end
   end
 
+  defp validate_repair_contract(steps) do
+    steps
+    |> Enum.with_index()
+    |> Enum.reduce_while(:ok, fn {step, position}, :ok ->
+      if step.on_error do
+        workspaces =
+          steps
+          |> Enum.take(position)
+          |> Enum.count(&workspace_action?/1)
+
+        case workspaces do
+          1 ->
+            {:cont, :ok}
+
+          0 ->
+            {:halt, {:error, {:workflow_compile_failed, step.name, :workspace_not_declared}}}
+
+          _count ->
+            {:halt,
+             {:error, {:workflow_compile_failed, step.name, :multiple_workspaces_declared}}}
+        end
+      else
+        {:cont, :ok}
+      end
+    end)
+  end
+
   defp validate_workspace_contract(steps) do
     case Enum.find_index(steps, &(&1.action == "Hancho.Actions.Implement")) do
       nil ->
@@ -33,11 +61,7 @@ defmodule Hancho.Workflow.Compiler do
           steps
           |> Enum.with_index()
           |> Enum.filter(fn {step, position} ->
-            position < implement_position and
-              step.action in [
-                "Hancho.Actions.CreateWorktree",
-                "Hancho.Actions.UseRepository"
-              ]
+            position < implement_position and workspace_action?(step)
           end)
 
         case workspaces do
@@ -61,13 +85,14 @@ defmodule Hancho.Workflow.Compiler do
     |> Enum.reduce_while({:ok, []}, fn {step, position}, {:ok, compiled} ->
       with {:ok, action} <- registry.fetch(step.action),
            :ok <- validate_action_params(action, step.params),
-           {:ok, environment} <- validate_environment(project, action, step.params, options) do
+           {:ok, environment} <- validate_environment(project, action, step.params, options),
+           {:ok, repair_environment} <- validate_repair_environment(step, options) do
         summary = %{
           position: position,
           name: step.name,
           action: step.action,
           module: action,
-          environment: environment
+          environment: Map.merge(environment, repair_environment)
         }
 
         {:cont, {:ok, [summary | compiled]}}
@@ -79,6 +104,21 @@ defmodule Hancho.Workflow.Compiler do
       {:ok, compiled} -> {:ok, Enum.reverse(compiled)}
       error -> error
     end
+  end
+
+  defp validate_repair_environment(%{on_error: nil}, _options), do: {:ok, %{}}
+
+  defp validate_repair_environment(%{on_error: policy}, options) do
+    with {:ok, provider} <- Hancho.Actions.Implement.provider(policy.repair_with),
+         :ok <- maybe_provider_ready(provider, options) do
+      {:ok, %{repair_provider: policy.repair_with}}
+    end
+  end
+
+  defp maybe_provider_ready(provider, options) do
+    if Keyword.get(options, :validate_environment, true),
+      do: provider_ready(provider, options),
+      else: :ok
   end
 
   defp validate_action_params(action, params) do
@@ -322,5 +362,9 @@ defmodule Hancho.Workflow.Compiler do
     steps
     |> Enum.flat_map(fn step -> if value = step.environment[key], do: [value], else: [] end)
     |> Enum.uniq()
+  end
+
+  defp workspace_action?(step) do
+    step.action in ["Hancho.Actions.CreateWorktree", "Hancho.Actions.UseRepository"]
   end
 end

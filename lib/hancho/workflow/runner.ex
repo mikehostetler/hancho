@@ -6,6 +6,7 @@ defmodule Hancho.Workflow.Runner do
     Definition,
     FailureCleanup,
     Loader,
+    Repair,
     RunReconciler,
     Runtime,
     Store
@@ -106,6 +107,7 @@ defmodule Hancho.Workflow.Runner do
          {:ok, steps} <- store_api.list_steps(store, run_id),
          {:ok, position} <- resumable_position(steps),
          {:ok, outputs} <- completed_outputs(steps),
+         {:ok, repairs} <- Repair.from_steps(steps),
          {:ok, _summary} <-
            reconciler.retry(
              project,
@@ -134,7 +136,11 @@ defmodule Hancho.Workflow.Runner do
                  log: log,
                  index: position,
                  outputs: outputs,
-                 artifacts: Hancho.Workflow.Artifacts.from_outputs(definition, outputs)
+                 artifacts:
+                   definition
+                   |> Hancho.Workflow.Artifacts.from_outputs(outputs)
+                   |> put_repairs(repairs),
+                 repairs: repairs
                }) do
           result = Runtime.run(pid)
           {:ok, attach_failure_evidence(project, result, options)}
@@ -202,6 +208,9 @@ defmodule Hancho.Workflow.Runner do
   end
 
   defp reconcile_options(options), do: Keyword.take(options, [:git])
+
+  defp put_repairs(artifacts, []), do: artifacts
+  defp put_repairs(artifacts, repairs), do: Map.put(artifacts, "repairs", repairs)
 
   defp attach_cleanup(project, result, options) do
     cleanup_api = Keyword.get(options, :failure_cleanup, FailureCleanup)

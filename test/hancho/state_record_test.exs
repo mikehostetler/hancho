@@ -37,6 +37,7 @@ defmodule Hancho.StateRecordTest do
 
     assert {:ok, upgraded_step} = step |> StepRecord.upgrade() |> StepRecord.new()
     assert upgraded_step.operation_json == nil
+    assert upgraded_step.repairs_json == "[]"
   end
 
   test "derives queue phases for legacy queue items" do

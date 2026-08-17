@@ -130,6 +130,34 @@ workspace. If an in-place run stops before commit, Hancho keeps the main branch
 and HEAD checks but accepts the agent's dirty files for retry. A successful run
 must still leave a clean repository at its recorded commit.
 
+Scope and verification gates can use a bounded coding-agent repair policy:
+
+```yaml
+- name: validate_scope
+  action: Hancho.Actions.ValidateScope
+  params:
+    worktree_path: "$steps.use_repository.workspace_path"
+    issue: "$steps.claim.issue"
+  on_error:
+    codes:
+      - changes_outside_allowed_scope
+    repair_with: grok
+    max_attempts: 1
+    retry_step: validate_scope
+```
+
+`Hancho.Actions.Verify` supports the `verification_failed` code. A policy can
+permit one to three attempts. It can retry only its own gate. The coding agent
+uses the selected workspace and receives the exact gate error and parameters.
+The repair prompt prohibits task, scope, branch, HEAD, and commit changes. Git
+state, provider, storage, and unknown failures remain terminal.
+
+Hancho writes each repair intent before it calls the agent. It then records the
+provider result or error and runs only the failed gate again. Repair records
+remain in the durable step state and in a stopped run's forensic report. A
+recovered CLI process resumes an incomplete Harness repair operation. `--verbose`
+shows normalized repair provider events and the attempt state.
+
 The `Hancho.Actions.RenderPrompt` action accepts exactly one prompt source. A
 file source is relative to `.hancho/prompts/`:
 
@@ -294,7 +322,8 @@ During implementation, Hancho records an `implement.progress` event every 30
 seconds by default. It records the Harness run ID, elapsed time, observed event
 count, and latest normalized event type. It does not copy raw provider output
 into the progress event. Set `progress_interval_ms` on the implementation step
-to change the interval.
+to change the interval. Repair calls use `repair.progress` events and the
+interval in the gate's `on_error` policy.
 
 Verification writes complete merged standard output to a protected file in
 `.hancho/logs/`. Factory activity contains one `verify.progress` event per 64
