@@ -6,7 +6,9 @@
     "hancho-q4k.4",
     "hancho-q4k.5"
   ],
-  "blocks": [],
+  "blocks": [
+    "hancho-q4k.7"
+  ],
   "created": "2026-08-17T15:51:19Z",
   "description": "Split issue selection, queue planning, execution, reporting, and adapter data. Remove or enforce dead repo.path configuration. Keep typed task data and store state behind explicit boundaries.",
   "id": "hancho-q4k.6",
