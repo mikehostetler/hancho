@@ -62,9 +62,15 @@ defmodule Hancho.WorkflowTest do
     path = Path.join(directory, "implement.yaml")
     File.write!(path, Hancho.Workflow.Default.implementation())
 
+    assert Hancho.Workflow.Default.implementation() ==
+             File.read!(Path.expand("../../priv/workflows/implement.yaml", __DIR__))
+
+    assert Hancho.Workflow.Default.implementation_prompt() ==
+             File.read!(Path.expand("../../priv/prompts/implement.md", __DIR__))
+
     assert {:ok, definition} = Loader.load_path(path)
     assert definition.name == "implement"
-    assert length(definition.steps) == 9
+    assert length(definition.steps) == 10
     assert hd(definition.steps).name == "preflight"
     assert List.last(definition.steps).name == "close_issue"
 
@@ -150,6 +156,8 @@ defmodule Hancho.WorkflowTest do
     assert {:ok, store} = Store.open(project.bedrock_path)
     assert {:ok, run} = Store.fetch_run(store, "run-success")
     assert run["status"] == "completed"
+    assert run["workflow_yaml"] == successful_workflow()
+    assert run["workflow_sha256"] == sha256(successful_workflow())
     assert Jason.decode!(run["outputs_json"]) == result.outputs
 
     assert {:ok, steps} = Store.list_steps(store, "run-success")
@@ -186,13 +194,9 @@ defmodule Hancho.WorkflowTest do
   test "runs the default workflow through all approved actions" do
     repository = temporary_repository()
     project = Hancho.Project.new(repository)
-    File.mkdir_p!(project.workflows_path)
     File.mkdir_p!(project.worktrees_path)
-
-    File.write!(
-      Path.join(project.workflows_path, "implement.yaml"),
-      Hancho.Workflow.Default.implementation()
-    )
+    assert :ok = Hancho.Workflow.Default.install(project)
+    write_quiet_log_config(project)
 
     assert {:ok, result} =
              Runner.run(
@@ -200,21 +204,35 @@ defmodule Hancho.WorkflowTest do
                "implement",
                %{"repo_path" => repository, "issue_id" => "hancho-123"},
                run_id: "full-run",
-               log: :disabled,
                flush_state: false,
                services: %{beadwork: Beadwork, harness: Harness, command: Command}
              )
 
     assert result.status == :completed
-    assert map_size(result.outputs) == 9
+    assert map_size(result.outputs) == 10
+    assert result.outputs["render_prompt"]["rendered"] =~ "Implement Beadwork task hancho-123"
     assert result.outputs["close_issue"]["status"] == "closed"
     assert File.read!(Path.join(repository, "implemented.txt")) == "implemented\n"
     refute File.exists?(Path.join(project.worktrees_path, "full-run"))
 
     assert {:ok, store} = Store.open(project.bedrock_path)
+    assert {:ok, run} = Store.fetch_run(store, "full-run")
+    assert run["workflow_yaml"] == Hancho.Workflow.Default.implementation()
+    assert run["workflow_sha256"] == sha256(Hancho.Workflow.Default.implementation())
+
     assert {:ok, steps} = Store.list_steps(store, "full-run")
     assert Enum.all?(steps, &(&1["status"] == "completed"))
     Store.close(store)
+
+    events = read_events(Path.join(project.logs_path, "factory.jsonl"))
+    workflow_event = Enum.find(events, &(&1["event"] == "workflow.snapshot"))
+    prompt_event = Enum.find(events, &(&1["event"] == "prompt.snapshot"))
+
+    assert workflow_event["metadata"]["yaml"] == Hancho.Workflow.Default.implementation()
+    assert workflow_event["metadata"]["sha256"] == run["workflow_sha256"]
+    assert prompt_event["metadata"]["template"] == Hancho.Workflow.Default.implementation_prompt()
+    assert prompt_event["metadata"]["rendered"] == result.outputs["render_prompt"]["rendered"]
+    assert prompt_event["metadata"]["sha256"] == result.outputs["render_prompt"]["sha256"]
   end
 
   defp successful_workflow do
@@ -268,4 +286,19 @@ defmodule Hancho.WorkflowTest do
 
     path
   end
+
+  defp write_quiet_log_config(project) do
+    {:ok, config} = Hancho.Config.default(project)
+    config = %{config | logs: %{config.logs | console: false, sync_interval_ms: 0}}
+    {:ok, contents} = Hancho.Config.encode(config)
+    File.write!(project.config_path, contents)
+  end
+
+  defp read_events(path) do
+    path
+    |> File.stream!()
+    |> Enum.map(&Jason.decode!/1)
+  end
+
+  defp sha256(contents), do: :crypto.hash(:sha256, contents) |> Base.encode16(case: :lower)
 end

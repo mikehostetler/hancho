@@ -9,9 +9,9 @@ defmodule Hancho.Workflow.Runner do
     loader = Keyword.get(options, :loader, Loader)
     store_api = Keyword.get(options, :store_api, Store)
 
-    with {:ok, definition} <- loader.load(project, workflow_name),
+    with {:ok, definition, workflow_source} <- loader.load_with_source(project, workflow_name),
          {:ok, store} <- store_api.open(project.bedrock_path) do
-      result = run_with_store(project, definition, input, store, options)
+      result = run_with_store(project, definition, workflow_source, input, store, options)
 
       case close_store(store_api, store, options) do
         :ok -> result
@@ -20,13 +20,14 @@ defmodule Hancho.Workflow.Runner do
     end
   end
 
-  defp run_with_store(project, definition, input, store, options) do
+  defp run_with_store(project, definition, workflow_source, input, store, options) do
     run_id = Keyword.get_lazy(options, :run_id, &new_run_id/0)
     store_api = Keyword.get(options, :store_api, Store)
 
     with {:ok, log} <- open_log(project, run_id, options) do
       try do
-        with :ok <- store_api.create_run(store, run_id, definition, input),
+        with :ok <- store_api.create_run(store, run_id, definition, input, workflow_source),
+             :ok <- log_workflow_source(log, definition, workflow_source),
              {:ok, pid} <-
                Runtime.start_link(%{
                  definition: definition,
@@ -65,6 +66,19 @@ defmodule Hancho.Workflow.Runner do
     else
       :ok
     end
+  end
+
+  defp log_workflow_source(log, definition, source) do
+    Hancho.Log.write(log, "Workflow snapshot",
+      event: "workflow.snapshot",
+      metadata: %{
+        workflow: definition.name,
+        version: definition.version,
+        path: source.path,
+        yaml: source.yaml,
+        sha256: source.sha256
+      }
+    )
   end
 
   defp new_run_id do

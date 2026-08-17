@@ -5,6 +5,7 @@ defmodule Hancho.Workflow.Registry do
     "Hancho.Actions.Preflight" => Hancho.Actions.Preflight,
     "Hancho.Actions.ClaimIssue" => Hancho.Actions.ClaimIssue,
     "Hancho.Actions.CreateWorktree" => Hancho.Actions.CreateWorktree,
+    "Hancho.Actions.RenderPrompt" => Hancho.Actions.RenderPrompt,
     "Hancho.Actions.Implement" => Hancho.Actions.Implement,
     "Hancho.Actions.Verify" => Hancho.Actions.Verify,
     "Hancho.Actions.Commit" => Hancho.Actions.Commit,

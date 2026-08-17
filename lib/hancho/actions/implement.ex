@@ -6,7 +6,7 @@ defmodule Hancho.Actions.Implement do
     description: "Implements a Beadwork task with Jido.Harness",
     schema:
       Zoi.object(%{
-        issue: Zoi.map(),
+        prompt: Zoi.string() |> Zoi.min(1),
         worktree_path: Zoi.string() |> Zoi.min(1),
         provider: Zoi.string() |> Zoi.min(1),
         timeout_ms: Zoi.integer() |> Zoi.min(1)
@@ -32,7 +32,7 @@ defmodule Hancho.Actions.Implement do
 
     with {:ok, provider} <- fetch_provider(params.provider),
          {:ok, result} <-
-           harness.run(provider, prompt(params.issue),
+           harness.run(provider, params.prompt,
              cwd: params.worktree_path,
              approval_mode: :auto_edit,
              sandbox_mode: :workspace_write,
@@ -60,21 +60,6 @@ defmodule Hancho.Actions.Implement do
 
   defp completed(%{status: :completed}), do: :ok
   defp completed(result), do: {:error, result.error || "The coding agent did not complete."}
-
-  defp prompt(issue) do
-    id = issue["id"] || issue[:id]
-    title = issue["title"] || issue[:title]
-    description = issue["description"] || issue[:description] || ""
-
-    """
-    Implement Beadwork task #{id}: #{title}
-
-    #{description}
-
-    Read and follow AGENTS.md. Work only in this worktree. Make the required code
-    changes and tests. Do not commit, merge, close the issue, or run bw sync.
-    """
-  end
 
   defp tail(text, limit) when byte_size(text) <= limit, do: text
   defp tail(text, limit), do: binary_part(text, byte_size(text) - limit, limit)

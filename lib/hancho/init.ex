@@ -21,6 +21,7 @@ defmodule Hancho.Init do
   defp create_runtime(project) do
     with :ok <- File.mkdir_p(project.logs_path),
          :ok <- File.mkdir_p(project.workflows_path),
+         :ok <- File.mkdir_p(Path.join(project.hancho_dir, "prompts")),
          :ok <- File.mkdir_p(project.worktrees_path),
          :ok <- File.chmod(project.hancho_dir, 0o700),
          :ok <- write_initial_config(project),

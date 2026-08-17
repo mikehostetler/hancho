@@ -17,9 +17,9 @@ defmodule Hancho.Workflow.Store do
   @spec close(String.t()) :: :ok | {:error, term()}
   def close(store), do: Bedrock.flush(store)
 
-  @spec create_run(String.t(), String.t(), Hancho.Workflow.Definition.t(), map()) ::
+  @spec create_run(String.t(), String.t(), Hancho.Workflow.Definition.t(), map(), map()) ::
           :ok | {:error, term()}
-  def create_run(store, id, definition, input) do
+  def create_run(store, id, definition, input, workflow_source) do
     transact(store, fn ->
       key = run_key(id)
 
@@ -32,6 +32,9 @@ defmodule Hancho.Workflow.Store do
             "id" => id,
             "workflow_name" => definition.name,
             "workflow_version" => definition.version,
+            "workflow_source_path" => workflow_source.path,
+            "workflow_yaml" => workflow_source.yaml,
+            "workflow_sha256" => workflow_source.sha256,
             "status" => "running",
             "current_step" => nil,
             "input_json" => encode!(input),

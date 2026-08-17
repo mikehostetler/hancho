@@ -67,13 +67,11 @@ defmodule Hancho.ActionsTest do
   end
 
   test "calls Jido.Harness with an approved provider and isolated worktree" do
-    issue = %{"id" => "hancho-123", "title" => "Test", "description" => "Do work"}
-
     assert {:ok, result} =
              Jido.Exec.run(
                Actions.Implement,
                %{
-                 issue: issue,
+                 prompt: "Implement hancho-123",
                  worktree_path: "/repo/.hancho/worktrees/run-1",
                  provider: "codex",
                  timeout_ms: 1_000
@@ -83,6 +81,44 @@ defmodule Hancho.ActionsTest do
 
     assert result.status == :completed
     assert result.harness_run_id == "harness-1"
+  end
+
+  test "renders inline and repository-local prompt snapshots" do
+    repository = temporary_repository()
+    prompts_path = Path.join([repository, ".hancho", "prompts"])
+    File.mkdir_p!(prompts_path)
+    File.write!(Path.join(prompts_path, "implement.md"), "Build {{issue.id}}: {{issue.title}}\n")
+
+    context = %{log: :disabled, step: "render_prompt"}
+    values = %{issue: %{"id" => "hancho-123", "title" => "Prompt support"}}
+
+    assert {:ok, file_result} =
+             Jido.Exec.run(
+               Actions.RenderPrompt,
+               %{repo_path: repository, prompt_file: "implement.md", context: values},
+               context
+             )
+
+    assert file_result.source == "file"
+    assert file_result.prompt_file == "implement.md"
+    assert file_result.template == "Build {{issue.id}}: {{issue.title}}\n"
+    assert file_result.rendered == "Build hancho-123: Prompt support\n"
+    assert file_result.sha256 == sha256(file_result.rendered)
+
+    assert {:ok, inline_result} =
+             Jido.Exec.run(
+               Actions.RenderPrompt,
+               %{
+                 repo_path: repository,
+                 prompt: "Review {{issue.id}}",
+                 context: values
+               },
+               context
+             )
+
+    assert inline_result.source == "inline"
+    assert inline_result.prompt_file == nil
+    assert inline_result.rendered == "Review hancho-123"
   end
 
   test "runs the configured verification command and captures its output" do
@@ -183,4 +219,6 @@ defmodule Hancho.ActionsTest do
 
     path
   end
+
+  defp sha256(contents), do: :crypto.hash(:sha256, contents) |> Base.encode16(case: :lower)
 end

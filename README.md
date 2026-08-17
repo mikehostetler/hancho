@@ -23,10 +23,15 @@ Initialize Hancho in a Git repository:
 ./hancho init
 ```
 
-This creates `.hancho/config.toml`, `.hancho/logs/`, `.hancho/workflows/`, and
-`.hancho/worktrees/`. It also installs the first workflow at
-`.hancho/workflows/implement.yaml`. The complete `.hancho/` folder stays local
-and ignored by Git.
+This creates `.hancho/config.toml`, `.hancho/logs/`, `.hancho/prompts/`,
+`.hancho/workflows/`, and `.hancho/worktrees/`. It installs the first workflow
+at `.hancho/workflows/implement.yaml` and its editable agent prompt at
+`.hancho/prompts/implement.md`. The complete `.hancho/` folder stays local and
+ignored by Git. Initialization does not replace an existing workflow or prompt.
+
+The distributed sources are `priv/workflows/implement.yaml` and
+`priv/prompts/implement.md`. Hancho embeds both files when it builds the escript
+and copies them into the repository during initialization.
 
 The initial configuration is:
 
@@ -63,12 +68,13 @@ This command stays in the foreground. The workflow does these steps in order:
 1. Check the Git repository and Beadwork task.
 2. Claim the task.
 3. Create a detached worktree in `.hancho/worktrees/`.
-4. Call the configured CLI coding agent through Jido.Harness.
-5. Run `mix test`.
-6. Create a conventional Git commit.
-7. Fast-forward the original branch to the commit.
-8. Remove the worktree.
-9. Close and sync the Beadwork task.
+4. Render and save the agent prompt.
+5. Call the configured CLI coding agent through Jido.Harness.
+6. Run `mix test`.
+7. Create a conventional Git commit.
+8. Fast-forward the original branch to the commit.
+9. Remove the worktree.
+10. Close and sync the Beadwork task.
 
 The YAML file names each step, selects one approved `Jido.Action` module, and
 sets its parameters. References are explicit:
@@ -81,6 +87,34 @@ Workflow structure does not use `config.toml`. Edit the repository-local YAML
 file to change action parameters. Hancho permits only action modules in
 `Hancho.Workflow.Registry`; it does not create atoms from YAML module names.
 
+The `Hancho.Actions.RenderPrompt` action accepts exactly one prompt source. A
+file source is relative to `.hancho/prompts/`:
+
+```yaml
+params:
+  repo_path: "$steps.preflight.repo_path"
+  prompt_file: implement.md
+  context:
+    issue: "$steps.claim.issue"
+```
+
+Small prompts can be inline YAML block strings:
+
+```yaml
+params:
+  repo_path: "$steps.preflight.repo_path"
+  prompt: |
+    Implement {{issue.id}}: {{issue.title}}
+
+    {{issue.description}}
+  context:
+    issue: "$steps.claim.issue"
+```
+
+Prompt variables use `{{context.path}}` syntax. Hancho stops if a variable is
+not present. The prompt-rendering step saves the exact template, rendered
+prompt, source, and SHA-256 values before the CLI agent starts.
+
 Hancho records every run and step in a local Bedrock cluster at
 `.hancho/bedrock/`. A successful step saves its result in an atomic transaction
 before the next step starts. If a step fails, Hancho stops the line, records the
@@ -89,6 +123,12 @@ implementation worktree for inspection when cleanup has not started. Bedrock
 stores its cluster descriptor, coordinator, log, and storage-worker files in
 this repository-local folder. Before the command returns, Hancho closes
 Bedrock's five-second in-memory storage window and verifies a durability marker.
+
+Each run record also saves the exact loaded workflow YAML, its source path, and
+its SHA-256 value. The activity log writes `workflow.snapshot` and
+`prompt.snapshot` events with the exact workflow, prompt template, rendered
+prompt, and matching hashes. These local audit records are intentionally not
+redacted and can contain private task data.
 
 ## Factory activity logs
 
