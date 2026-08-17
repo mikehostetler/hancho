@@ -6,14 +6,16 @@
   "blocks": [
     "hancho-q4k.6"
   ],
+  "closed_at": "2026-08-17T16:23:10Z",
+  "close_reason": "Implemented in 9d89e3e",
   "created": "2026-08-17T15:51:19Z",
   "description": "Add a workflow compile phase for action allowlist, parameter keys, references, prompts, providers, and verification executables. Use semantic artifacts instead of exact step-name coupling in queue, retry, and inspection.",
   "id": "hancho-q4k.4",
   "labels": [],
   "parent": "hancho-q4k",
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Compile workflows before execution",
   "type": "task",
-  "updated_at": "2026-08-17T16:15:39Z"
+  "updated_at": "2026-08-17T16:23:10Z"
 }
