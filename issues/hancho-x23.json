@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T12:14:38Z",
+  "description": "Embed the default workflow and prompt, render repository-local prompts, and store exact workflow and prompt snapshots for audit.",
+  "id": "hancho-x23",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Add prompt and workflow snapshots",
+  "type": "task",
+  "updated_at": "2026-08-17T12:14:38Z"
+}
