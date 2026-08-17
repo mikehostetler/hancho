@@ -58,15 +58,18 @@ defmodule Hancho.Worktrees do
 
   @spec clean(Hancho.Project.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def clean(project, id, options \\ []) do
+    git = Keyword.get(options, :git, Hancho.Git)
+
     with {:ok, report} <- inspect(project, id, options),
          :ok <- registered(report),
-         {:ok, removed} <- remove_generated(report.path) do
+         {:ok, cleanup} <- remove_generated(report.path, report.generated, git) do
       {:ok,
        %{
          id: id,
          path: report.path,
-         removed: removed,
-         reclaimed_bytes: report.generated_bytes,
+         removed: cleanup.removed,
+         skipped: cleanup.skipped,
+         reclaimed_bytes: cleanup.reclaimed_bytes,
          source_changes_retained: true
        }}
     end
@@ -100,25 +103,58 @@ defmodule Hancho.Worktrees do
     end)
   end
 
-  defp remove_generated(path) do
-    Enum.reduce_while(@generated_directories, {:ok, []}, fn name, {:ok, removed} ->
+  defp remove_generated(path, sizes, git) do
+    Enum.reduce(@generated_directories, %{removed: [], skipped: []}, fn name, cleanup ->
       target = Path.join(path, name)
 
       if match?({:ok, _stat}, File.lstat(target)) do
-        case File.rm_rf(target) do
-          {:ok, _paths} ->
-            {:cont, {:ok, [name | removed]}}
+        case git.tracked_files(path, name) do
+          {:ok, []} ->
+            remove_directory(target, name, cleanup)
 
-          {:error, reason, failed_path} ->
-            {:halt, {:error, {:remove_failed, failed_path, reason}}}
+          {:ok, tracked} ->
+            skipped = %{name: name, reason: "tracked_files", paths: Enum.sort(tracked)}
+            %{cleanup | skipped: [skipped | cleanup.skipped]}
+
+          {:error, reason} ->
+            skipped = %{
+              name: name,
+              reason: "tracked_files_check_failed",
+              error: Hancho.Log.Event.normalize(reason)
+            }
+
+            %{cleanup | skipped: [skipped | cleanup.skipped]}
         end
       else
-        {:cont, {:ok, removed}}
+        cleanup
       end
     end)
-    |> case do
-      {:ok, removed} -> {:ok, Enum.reverse(removed)}
-      error -> error
+    |> then(fn cleanup ->
+      removed = Enum.reverse(cleanup.removed)
+
+      {:ok,
+       %{
+         removed: removed,
+         skipped: Enum.reverse(cleanup.skipped),
+         reclaimed_bytes: Enum.reduce(removed, 0, &(&2 + Map.get(sizes, &1, 0)))
+       }}
+    end)
+  end
+
+  defp remove_directory(target, name, cleanup) do
+    case File.rm_rf(target) do
+      {:ok, _paths} ->
+        %{cleanup | removed: [name | cleanup.removed]}
+
+      {:error, reason, failed_path} ->
+        skipped = %{
+          name: name,
+          reason: "remove_failed",
+          path: failed_path,
+          error: Hancho.Log.Event.normalize(reason)
+        }
+
+        %{cleanup | skipped: [skipped | cleanup.skipped]}
     end
   end
 

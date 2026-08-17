@@ -10,7 +10,9 @@ defmodule Hancho.Workflow.Result do
               current_step: Zoi.string() |> Zoi.nullish(),
               outputs: Zoi.map() |> Zoi.default(%{}),
               artifacts: Zoi.map() |> Zoi.default(%{}),
-              error: Zoi.any() |> Zoi.nullish()
+              error: Zoi.any() |> Zoi.nullish(),
+              cleanup: Zoi.map() |> Zoi.nullish() |> Zoi.default(nil),
+              forensic_report: Zoi.string() |> Zoi.nullish() |> Zoi.default(nil)
             },
             coerce: true
           )

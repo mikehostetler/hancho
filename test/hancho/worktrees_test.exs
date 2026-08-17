@@ -33,6 +33,7 @@ defmodule Hancho.WorktreesTest do
 
     assert {:ok, cleaned} = Worktrees.clean(project, "run-retained")
     assert cleaned.removed == ["_build", "deps", "cover"]
+    assert cleaned.skipped == []
     assert cleaned.reclaimed_bytes == 90
     assert cleaned.source_changes_retained
     assert File.read!(Path.join(path, "feature.txt")) == "diagnostic source change\n"
@@ -44,6 +45,40 @@ defmodule Hancho.WorktreesTest do
     assert Enum.any?(registrations, &(&1.head == head and &1.detached))
 
     assert {:error, :invalid_worktree_id} = Worktrees.inspect(project, "../outside")
+  end
+
+  test "does not remove tracked directories that use a generated name" do
+    repository = temporary_repository()
+    File.mkdir_p!(Path.join(repository, "deps"))
+    File.write!(Path.join(repository, "deps/keep.txt"), "tracked source\n")
+    {_output, 0} = System.cmd("git", ["-C", repository, "add", "deps/keep.txt"])
+
+    {_output, 0} =
+      System.cmd("git", [
+        "-C",
+        repository,
+        "-c",
+        "user.name=Hancho Test",
+        "-c",
+        "user.email=hancho@example.test",
+        "commit",
+        "-m",
+        "test: track dependency source"
+      ])
+
+    project = Hancho.Project.new(repository)
+    File.mkdir_p!(project.worktrees_path)
+    {:ok, head} = Hancho.Git.head(working_dir: repository)
+    path = Path.join(project.worktrees_path, "run-tracked")
+    assert {:ok, :done} = Hancho.Git.create_worktree(repository, path, head)
+    File.write!(Path.join(path, "deps/cache.bin"), "generated cache\n")
+
+    assert {:ok, cleanup} = Worktrees.clean(project, "run-tracked")
+    assert cleanup.removed == []
+    assert cleanup.reclaimed_bytes == 0
+    assert cleanup.skipped == [%{name: "deps", reason: "tracked_files", paths: ["deps/keep.txt"]}]
+    assert File.read!(Path.join(path, "deps/keep.txt")) == "tracked source\n"
+    assert File.read!(Path.join(path, "deps/cache.bin")) == "generated cache\n"
   end
 
   defp temporary_repository do

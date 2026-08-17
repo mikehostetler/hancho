@@ -1,7 +1,15 @@
 defmodule Hancho.Workflow.Runner do
   @moduledoc "Runs one workflow in the foreground."
 
-  alias Hancho.Workflow.{Compiler, Definition, Loader, RunReconciler, Runtime, Store}
+  alias Hancho.Workflow.{
+    Compiler,
+    Definition,
+    FailureCleanup,
+    Loader,
+    RunReconciler,
+    Runtime,
+    Store
+  }
 
   @spec run(Hancho.Project.t(), String.t(), map(), keyword()) ::
           {:ok, Hancho.Workflow.Result.t()} | {:error, term()}
@@ -74,7 +82,8 @@ defmodule Hancho.Workflow.Runner do
                  verbose: Keyword.get(options, :verbose, false),
                  log: log
                }) do
-          {:ok, Runtime.run(pid)}
+          result = Runtime.run(pid)
+          {:ok, attach_cleanup(project, result, options)}
         end
       after
         Hancho.Log.close(log)
@@ -125,7 +134,8 @@ defmodule Hancho.Workflow.Runner do
                  outputs: outputs,
                  artifacts: Hancho.Workflow.Artifacts.from_outputs(definition, outputs)
                }) do
-          {:ok, Runtime.run(pid)}
+          result = Runtime.run(pid)
+          {:ok, attach_cleanup(project, result, options)}
         end
       after
         Hancho.Log.close(log)
@@ -190,6 +200,11 @@ defmodule Hancho.Workflow.Runner do
   end
 
   defp reconcile_options(options), do: Keyword.take(options, [:git])
+
+  defp attach_cleanup(project, result, options) do
+    cleanup_api = Keyword.get(options, :failure_cleanup, FailureCleanup)
+    %{result | cleanup: cleanup_api.run(project, result, options)}
+  end
 
   defp sha256(contents),
     do: :crypto.hash(:sha256, contents) |> Base.encode16(case: :lower)

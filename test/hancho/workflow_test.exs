@@ -92,6 +92,13 @@ defmodule Hancho.WorkflowTest do
     end
   end
 
+  defmodule RecordingFailureCleanup do
+    def run(project, result, options) do
+      send(options[:test_pid], {:failure_cleanup, project.root, result.current_step})
+      %{status: "completed", removed: ["_build", "deps"]}
+    end
+  end
+
   test "loads the default ordered workflow and validates action references" do
     directory = temporary_directory()
     path = Path.join(directory, "implement.yaml")
@@ -225,6 +232,8 @@ defmodule Hancho.WorkflowTest do
                run_id: "run-stopped",
                registry: Registry,
                executor: MissingOutputExecutor,
+               failure_cleanup: RecordingFailureCleanup,
+               test_pid: self(),
                log: :disabled,
                flush_state: false
              )
@@ -232,6 +241,9 @@ defmodule Hancho.WorkflowTest do
     assert result.status == :stopped
     assert result.current_step == "second"
     assert result.error =~ "$steps.first.value"
+    assert result.cleanup == %{status: "completed", removed: ["_build", "deps"]}
+    assert_received {:failure_cleanup, project_root, "second"}
+    assert project_root == project.root
 
     assert {:ok, store} = Store.open(project.bedrock_path)
     assert {:ok, run} = Store.fetch_run(store, "run-stopped")

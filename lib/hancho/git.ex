@@ -53,6 +53,15 @@ defmodule Hancho.Git do
   @spec worktrees([option()]) :: {:ok, [Git.Worktree.t()]} | {:error, term()}
   def worktrees(options \\ []), do: Git.worktree(config: config(options))
 
+  @spec tracked_files(String.t(), String.t(), [option()]) ::
+          {:ok, [String.t()]} | {:error, term()}
+  def tracked_files(repository, path, options \\ []) do
+    options
+    |> Keyword.put(:working_dir, repository)
+    |> config()
+    |> then(&Git.ls_files(paths: [path], config: &1))
+  end
+
   @spec create_worktree(String.t(), String.t(), String.t(), [option()]) ::
           {:ok, :done} | {:error, term()}
   def create_worktree(repository, path, ref, options \\ []) do
