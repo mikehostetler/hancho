@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [
     "hancho-jd4.2"
@@ -10,8 +10,8 @@
   "labels": [],
   "parent": "hancho-jd4",
   "priority": 1,
-  "status": "open",
+  "status": "in_progress",
   "title": "Add logging configuration and event schema",
   "type": "task",
-  "updated_at": "2026-08-17T00:09:34Z"
+  "updated_at": "2026-08-17T00:09:41Z"
 }
