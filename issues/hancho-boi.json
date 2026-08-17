@@ -2,13 +2,15 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T19:42:48Z",
+  "close_reason": "Completed generated-data cleanup, in-place recovery, and forensic reporting hardening",
   "created": "2026-08-17T19:25:06Z",
   "description": "Make stopped worktree and in-place workflows storage-efficient, recoverable, and diagnosable from repository-local forensic reports.",
   "id": "hancho-boi",
   "labels": [],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Harden failed factory runs",
   "type": "epic",
-  "updated_at": "2026-08-17T19:25:16Z"
+  "updated_at": "2026-08-17T19:42:48Z"
 }
