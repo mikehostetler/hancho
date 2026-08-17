@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T15:51:07Z",
+  "description": "Implement every finding from the 2026-08-17 Hancho factory review: crash recovery, repository leases, durable step attempts, idempotent external effects, safe timeout and cancellation ownership, atomic audit transitions, phase-aware queue resume, branch-safe landing, workflow compilation, repository-local Harness state, bounded verification output, typed durable records, architectural boundary cleanup, and a production release check.",
+  "id": "hancho-q4k",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Harden Hancho as a resilient software factory",
+  "type": "epic",
+  "updated_at": "2026-08-17T15:51:07Z"
+}
