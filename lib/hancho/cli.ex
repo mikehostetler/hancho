@@ -9,11 +9,19 @@ defmodule Hancho.CLI do
     hancho doctor     Inspect the repository and local tools
     hancho run WORKFLOW ISSUE_ID
                       Run one Beadwork workflow in the foreground
+    hancho queue WORKFLOW --source beadwork-ready --count N [--verbose]
+                      Run ready Beadwork tasks serially in the foreground
     hancho --version  Print the Hancho version
     hancho --help     Print this help
   """
 
-  @switches [help: :boolean, version: :boolean]
+  @switches [
+    help: :boolean,
+    version: :boolean,
+    source: :string,
+    count: :integer,
+    verbose: :boolean
+  ]
   @aliases [h: :help, v: :version]
 
   def main(args) do
@@ -37,22 +45,22 @@ defmodule Hancho.CLI do
     cond do
       parsed[:help] -> print_usage()
       parsed[:version] -> print_version()
-      true -> dispatch_command(arguments, options)
+      true -> dispatch_command(arguments, parsed, options)
     end
   end
 
-  defp dispatch_command([], _options), do: print_usage()
-  defp dispatch_command(["help"], _options), do: print_usage()
-  defp dispatch_command(["version"], _options), do: print_version()
+  defp dispatch_command([], [], _options), do: print_usage()
+  defp dispatch_command(["help"], [], _options), do: print_usage()
+  defp dispatch_command(["version"], [], _options), do: print_version()
 
-  defp dispatch_command(["doctor"], options) do
+  defp dispatch_command(["doctor"], [], options) do
     report = Hancho.Doctor.run(options)
     IO.puts(Hancho.Doctor.format(report))
 
     if report.healthy?, do: 0, else: 1
   end
 
-  defp dispatch_command(["init"], options) do
+  defp dispatch_command(["init"], [], options) do
     case Hancho.Init.run(options) do
       {:ok, path} ->
         IO.puts("Initialized Hancho at #{path}")
@@ -64,7 +72,7 @@ defmodule Hancho.CLI do
     end
   end
 
-  defp dispatch_command(["run", workflow, issue_id], options) do
+  defp dispatch_command(["run", workflow, issue_id], [], options) do
     project_api = Keyword.get(options, :project_api, Hancho.Project)
     runner = Keyword.get(options, :workflow_runner, Hancho.Workflow.Runner)
     cwd = Keyword.get(options, :cwd, File.cwd!())
@@ -85,7 +93,44 @@ defmodule Hancho.CLI do
     end
   end
 
-  defp dispatch_command(arguments, _options) do
+  defp dispatch_command(["queue", workflow], parsed, options) do
+    source = parsed[:source]
+    count = parsed[:count]
+
+    if is_binary(source) and is_integer(count) and count > 0 do
+      project_api = Keyword.get(options, :project_api, Hancho.Project)
+      runner = Keyword.get(options, :queue_runner, Hancho.Workflow.QueueRunner)
+      cwd = Keyword.get(options, :cwd, File.cwd!())
+
+      queue_options =
+        options
+        |> Keyword.put(:verbose, parsed[:verbose] || false)
+        |> Keyword.put(:progress, fn message ->
+          IO.puts(message)
+          :ok
+        end)
+
+      with {:ok, project} <- project_api.discover(cwd: cwd),
+           {:ok, result} <- runner.run(project, workflow, source, count, queue_options) do
+        print_queue_result(result)
+      else
+        {:error, reason} ->
+          IO.puts(:stderr, "ERROR: #{format_error(reason)}")
+          1
+      end
+    else
+      IO.puts(:stderr, "ERROR: queue requires --source and a positive --count.")
+      2
+    end
+  end
+
+  defp dispatch_command(_arguments, parsed, _options) when parsed != [] do
+    options = parsed |> Keyword.keys() |> Enum.map_join(" ", &"--#{&1}")
+    IO.puts(:stderr, "ERROR: Options are not valid for this command: #{options}")
+    2
+  end
+
+  defp dispatch_command(arguments, _parsed, _options) do
     IO.puts(:stderr, "ERROR: Unknown command: #{Enum.join(arguments, " ")}")
     IO.puts(:stderr, "Run 'hancho --help' for usage.")
     2
@@ -116,6 +161,17 @@ defmodule Hancho.CLI do
     IO.puts(
       :stderr,
       "ERROR: Workflow #{result.workflow} stopped at #{result.current_step}: #{format_error(result.error)}"
+    )
+
+    1
+  end
+
+  defp print_queue_result(%Hancho.Workflow.QueueResult{status: :completed}), do: 0
+
+  defp print_queue_result(%Hancho.Workflow.QueueResult{status: :stopped} = result) do
+    IO.puts(
+      :stderr,
+      "ERROR: Queue #{result.queue_id} stopped at #{result.current_issue}: #{format_error(result.error)}"
     )
 
     1

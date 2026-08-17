@@ -1,0 +1,449 @@
+defmodule Hancho.Workflow.QueueRunner do
+  @moduledoc "Runs a durable workflow queue serially in the foreground."
+
+  alias Hancho.Workflow.{QueueReconciler, QueueResult, Runner, Store}
+
+  @source "beadwork-ready"
+
+  @spec run(Hancho.Project.t(), String.t(), String.t(), pos_integer(), keyword()) ::
+          {:ok, QueueResult.t()} | {:error, term()}
+  def run(project, workflow, source, count, options \\ []) do
+    beadwork = Keyword.get(options, :beadwork, Hancho.Beadwork)
+    store_api = Keyword.get(options, :store_api, Store)
+    reconciler = Keyword.get(options, :reconciler, QueueReconciler)
+
+    with :ok <- validate_request(source, count),
+         {:ok, ready} <- beadwork.ready(working_dir: project.root),
+         {:ok, issues} <- select_issues(ready, count),
+         queue_id = Keyword.get_lazy(options, :queue_id, &new_queue_id/0),
+         items = queue_items(queue_id, issues),
+         {:ok, repository_state} <- reconciler.initial(project, reconcile_options(options)),
+         {:ok, store} <- store_api.open(project.bedrock_path) do
+      result =
+        run_with_store(
+          project,
+          workflow,
+          source,
+          items,
+          queue_id,
+          repository_state,
+          store,
+          options
+        )
+
+      case store_api.close(store) do
+        :ok -> result
+        {:error, reason} -> {:error, {:state_flush_failed, reason}}
+      end
+    end
+  end
+
+  defp run_with_store(
+         project,
+         workflow,
+         source,
+         items,
+         queue_id,
+         repository_state,
+         store,
+         options
+       ) do
+    store_api = Keyword.get(options, :store_api, Store)
+
+    with :ok <-
+           store_api.create_queue(
+             store,
+             queue_id,
+             workflow,
+             source,
+             items,
+             repository_state
+           ),
+         :ok <- store_api.close(store),
+         :ok <-
+           emit(
+             project,
+             queue_id,
+             "queue.started",
+             "Queue #{queue_id} selected #{length(items)} tasks.",
+             %{workflow: workflow, source: source, issues: Enum.map(items, & &1.issue_id)},
+             true,
+             options
+           ) do
+      run_items(project, workflow, queue_id, items, 0, store, options)
+    end
+  end
+
+  defp run_items(project, workflow, queue_id, items, position, store, options)
+       when position == length(items) do
+    store_api = Keyword.get(options, :store_api, Store)
+
+    with :ok <- store_api.complete_queue(store, queue_id),
+         :ok <- store_api.close(store),
+         :ok <-
+           emit(
+             project,
+             queue_id,
+             "queue.completed",
+             "Queue #{queue_id} completed #{length(items)}/#{length(items)} tasks.",
+             %{completed_count: length(items), total_count: length(items)},
+             true,
+             options
+           ) do
+      queue_result(store_api, store, queue_id, workflow)
+    end
+  end
+
+  defp run_items(project, workflow, queue_id, items, position, store, options) do
+    store_api = Keyword.get(options, :store_api, Store)
+    reconciler = Keyword.get(options, :reconciler, QueueReconciler)
+    runner = Keyword.get(options, :workflow_runner, Runner)
+    item = Enum.at(items, position)
+
+    with {:ok, queue} <- store_api.fetch_queue(store, queue_id),
+         {:ok, summary} <- reconciler.before_item(project, queue, reconcile_options(options)),
+         :ok <-
+           emit_reconciliation(
+             project,
+             queue_id,
+             "before",
+             position,
+             item,
+             summary,
+             options
+           ),
+         :ok <- store_api.start_queue_item(store, queue_id, position),
+         :ok <- store_api.close(store),
+         :ok <-
+           emit(
+             project,
+             queue_id,
+             "queue.item_started",
+             item_message("Starting", item, position, length(items)),
+             item_metadata(item, position, length(items)),
+             true,
+             options
+           ) do
+      child_options = Keyword.put(options, :run_id, item.run_id)
+
+      case runner.run(
+             project,
+             workflow,
+             %{"repo_path" => project.root, "issue_id" => item.issue_id},
+             child_options
+           ) do
+        {:ok, %{status: :completed} = result} ->
+          complete_item(
+            project,
+            workflow,
+            queue_id,
+            items,
+            position,
+            item,
+            result,
+            store,
+            options
+          )
+
+        {:ok, %{status: :stopped} = result} ->
+          stop_item(project, workflow, queue_id, items, position, item, result, store, options)
+
+        {:error, reason} ->
+          stop_for_error(
+            project,
+            workflow,
+            queue_id,
+            items,
+            position,
+            item,
+            %{code: "child_run_failed", error: Hancho.Log.Event.normalize(reason)},
+            store,
+            options
+          )
+      end
+    else
+      {:error, reason} ->
+        stop_for_error(
+          project,
+          workflow,
+          queue_id,
+          items,
+          position,
+          item,
+          reason,
+          store,
+          options
+        )
+    end
+  end
+
+  defp complete_item(
+         project,
+         workflow,
+         queue_id,
+         items,
+         position,
+         item,
+         result,
+         store,
+         options
+       ) do
+    store_api = Keyword.get(options, :store_api, Store)
+    reconciler = Keyword.get(options, :reconciler, QueueReconciler)
+
+    with {:ok, queue} <- store_api.fetch_queue(store, queue_id),
+         {:ok, summary} <-
+           reconciler.after_run(project, queue, result.outputs, reconcile_options(options)),
+         :ok <-
+           emit_reconciliation(
+             project,
+             queue_id,
+             "after",
+             position,
+             item,
+             summary,
+             options
+           ),
+         landed when is_binary(landed) <- get_in(result.outputs, ["land", "commit"]),
+         :ok <- store_api.complete_queue_item(store, queue_id, position, landed),
+         :ok <- store_api.close(store),
+         :ok <-
+           emit(
+             project,
+             queue_id,
+             "queue.item_completed",
+             item_message("Completed", item, position, length(items)),
+             item_metadata(item, position, length(items)) |> Map.put(:head, landed),
+             true,
+             options
+           ) do
+      run_items(project, workflow, queue_id, items, position + 1, store, options)
+    else
+      nil ->
+        stop_for_error(
+          project,
+          workflow,
+          queue_id,
+          items,
+          position,
+          item,
+          %{code: "missing_landed_commit"},
+          store,
+          options
+        )
+
+      {:error, reason} ->
+        stop_for_error(
+          project,
+          workflow,
+          queue_id,
+          items,
+          position,
+          item,
+          reason,
+          store,
+          options
+        )
+    end
+  end
+
+  defp stop_item(
+         project,
+         workflow,
+         queue_id,
+         items,
+         position,
+         item,
+         result,
+         store,
+         options
+       ) do
+    store_api = Keyword.get(options, :store_api, Store)
+    reconciler = Keyword.get(options, :reconciler, QueueReconciler)
+
+    with {:ok, queue} <- store_api.fetch_queue(store, queue_id),
+         {:ok, summary} <-
+           reconciler.after_run(project, queue, result.outputs, reconcile_options(options)),
+         :ok <-
+           emit_reconciliation(
+             project,
+             queue_id,
+             "after",
+             position,
+             item,
+             summary,
+             options
+           ) do
+      stop_for_error(
+        project,
+        workflow,
+        queue_id,
+        items,
+        position,
+        item,
+        %{code: "workflow_stopped", step: result.current_step, error: result.error},
+        store,
+        options
+      )
+    else
+      {:error, reason} ->
+        stop_for_error(
+          project,
+          workflow,
+          queue_id,
+          items,
+          position,
+          item,
+          reason,
+          store,
+          options
+        )
+    end
+  end
+
+  defp stop_for_error(
+         project,
+         workflow,
+         queue_id,
+         items,
+         position,
+         item,
+         error,
+         store,
+         options
+       ) do
+    store_api = Keyword.get(options, :store_api, Store)
+    event = if out_of_sync?(error), do: "queue.reconciliation_failed", else: "queue.stopped"
+    message = item_message("Stopped", item, position, length(items)) <> ": #{inspect(error)}"
+
+    with :ok <- store_api.stop_queue_item(store, queue_id, position, error),
+         :ok <- store_api.close(store),
+         :ok <-
+           emit(
+             project,
+             queue_id,
+             event,
+             message,
+             Map.put(item_metadata(item, position, length(items)), :error, error),
+             true,
+             options
+           ) do
+      queue_result(store_api, store, queue_id, workflow)
+    end
+  end
+
+  defp queue_result(store_api, store, queue_id, workflow) do
+    with {:ok, queue} <- store_api.fetch_queue(store, queue_id) do
+      completed_count = Enum.count(queue["items"], &(&1["status"] == "completed"))
+      current = Enum.at(queue["items"], queue["current_position"])
+
+      QueueResult.new(%{
+        queue_id: queue_id,
+        workflow: workflow,
+        status: String.to_existing_atom(queue["status"]),
+        completed_count: completed_count,
+        total_count: length(queue["items"]),
+        current_issue: if(current, do: current["issue_id"]),
+        child_runs: Enum.map(queue["items"], & &1["run_id"]),
+        error: queue["error"]
+      })
+    end
+  end
+
+  defp select_issues(ready, count) do
+    selected =
+      ready
+      |> Enum.filter(&ready_task?/1)
+      |> Enum.take(count)
+
+    if length(selected) == count do
+      {:ok, selected}
+    else
+      {:error, "Beadwork has #{length(selected)} ready tasks; #{count} are required."}
+    end
+  end
+
+  defp ready_task?(issue) do
+    issue["type"] == "task" and issue["status"] in ["open", "in_progress"] and
+      (issue["blocked_by"] || []) == [] and is_binary(issue["id"])
+  end
+
+  defp queue_items(queue_id, issues) do
+    issues
+    |> Enum.with_index()
+    |> Enum.map(fn {issue, position} ->
+      %{
+        position: position,
+        issue_id: issue["id"],
+        run_id:
+          "#{queue_id}-#{(position + 1) |> Integer.to_string() |> String.pad_leading(3, "0")}"
+      }
+    end)
+  end
+
+  defp validate_request(@source, count) when is_integer(count) and count > 0, do: :ok
+
+  defp validate_request(source, _count) when source != @source,
+    do: {:error, "Unknown queue source: #{source}"}
+
+  defp validate_request(_source, _count), do: {:error, "Queue count must be a positive integer."}
+
+  defp emit_reconciliation(project, queue_id, boundary, position, item, summary, options) do
+    emit(
+      project,
+      queue_id,
+      "queue.reconciled",
+      "Reconciled #{boundary} item #{position + 1}: #{summary.branch} at #{summary.head}, clean, #{length(summary.worktrees)} worktrees.",
+      Map.merge(item_metadata(item, position, nil), %{boundary: boundary, state: summary}),
+      false,
+      options
+    )
+  end
+
+  defp emit(project, queue_id, event, message, metadata, important, options) do
+    progress = Keyword.get(options, :progress, fn _message -> :ok end)
+
+    with :ok <- maybe_progress(progress, message, important, options),
+         :ok <- write_audit(project, queue_id, event, message, metadata, options) do
+      :ok
+    end
+  end
+
+  defp maybe_progress(progress, message, important, options) do
+    if important or Keyword.get(options, :verbose, false), do: progress.(message), else: :ok
+  end
+
+  defp write_audit(project, queue_id, event, message, metadata, options) do
+    if Keyword.get(options, :log) == :disabled do
+      :ok
+    else
+      with {:ok, config} <- Hancho.Config.load(project),
+           config = %{config | logs: %{config.logs | console: false}},
+           {:ok, log} <- Hancho.Log.open(project, config, metadata: %{queue_id: queue_id}) do
+        try do
+          Hancho.Log.write(log, message, event: event, metadata: metadata)
+        after
+          Hancho.Log.close(log)
+        end
+      end
+    end
+  end
+
+  defp item_message(action, item, position, total) do
+    "[#{position + 1}/#{total}] #{action} #{item.issue_id}. Run: #{item.run_id}"
+  end
+
+  defp item_metadata(item, position, total) do
+    %{issue_id: item.issue_id, run_id: item.run_id, position: position, total_count: total}
+  end
+
+  defp reconcile_options(options), do: Keyword.take(options, [:git])
+
+  defp out_of_sync?(%{code: "filesystem_out_of_sync"}), do: true
+  defp out_of_sync?(_error), do: false
+
+  defp new_queue_id do
+    suffix = :crypto.strong_rand_bytes(6) |> Base.url_encode64(padding: false)
+    "queue-#{System.system_time(:millisecond)}-#{suffix}"
+  end
+end

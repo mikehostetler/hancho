@@ -22,6 +22,24 @@ defmodule Hancho.CLITest do
     end
   end
 
+  defmodule QueueRunner do
+    def run(project, "implement", "beadwork-ready", 5, options) do
+      send(self(), {:queue_input, project, options[:verbose]})
+      options[:progress].("Queue queue-1 started.")
+
+      Hancho.Workflow.QueueResult.new(%{
+        queue_id: "queue-1",
+        workflow: "implement",
+        status: :completed,
+        completed_count: 5,
+        total_count: 5,
+        current_issue: nil,
+        child_runs: ["queue-1-001"],
+        error: nil
+      })
+    end
+  end
+
   test "has explicit help and version commands" do
     assert capture_io(fn -> assert Hancho.CLI.run([]) == 0 end) =~ "Usage:"
     assert capture_io(fn -> assert Hancho.CLI.run(["--help"]) == 0 end) =~ "hancho doctor"
@@ -73,5 +91,38 @@ defmodule Hancho.CLITest do
                      %{"repo_path" => "/repo", "issue_id" => "hancho-123"}}
 
     assert project.bedrock_path == "/repo/.hancho/bedrock"
+  end
+
+  test "runs an explicit foreground queue with verbose progress" do
+    output =
+      capture_io(fn ->
+        assert Hancho.CLI.run(
+                 [
+                   "queue",
+                   "implement",
+                   "--source",
+                   "beadwork-ready",
+                   "--count",
+                   "5",
+                   "--verbose"
+                 ],
+                 cwd: "/repo",
+                 project_api: ProjectAPI,
+                 queue_runner: QueueRunner
+               ) == 0
+      end)
+
+    assert output == "Queue queue-1 started.\n"
+    assert_received {:queue_input, project, true}
+    assert project.root == "/repo"
+  end
+
+  test "requires explicit queue source and count" do
+    output =
+      capture_io(:stderr, fn ->
+        assert Hancho.CLI.run(["queue", "implement", "--source", "beadwork-ready"]) == 2
+      end)
+
+    assert output == "ERROR: queue requires --source and a positive --count.\n"
   end
 end

@@ -5,6 +5,8 @@ defmodule Hancho.Workflow.Store do
   alias Hancho.State.{Bedrock, Repo}
 
   @prefix "hancho/workflow/runs/"
+  @queue_prefix "hancho/workflow/queues/"
+  @active_queue_key "hancho/workflow/queues/active"
 
   @spec open(String.t()) :: {:ok, String.t()} | {:error, term()}
   def open(path) do
@@ -163,6 +165,136 @@ defmodule Hancho.Workflow.Store do
     end)
   end
 
+  @spec create_queue(String.t(), String.t(), String.t(), String.t(), [map()], map()) ::
+          :ok | {:error, term()}
+  def create_queue(store, id, workflow, source, items, repository_state) do
+    transact(store, fn ->
+      if Repo.get(@active_queue_key) do
+        Repo.rollback(:queue_already_running)
+      else
+        queue = %{
+          "id" => id,
+          "workflow_name" => workflow,
+          "source" => source,
+          "status" => "running",
+          "repository" => repository_state.repository,
+          "expected_branch" => repository_state.branch,
+          "expected_head" => repository_state.head,
+          "current_position" => 0,
+          "current_run_id" => nil,
+          "items" =>
+            Enum.map(items, fn item ->
+              %{
+                "position" => item.position,
+                "issue_id" => item.issue_id,
+                "run_id" => item.run_id,
+                "status" => "pending",
+                "error" => nil
+              }
+            end),
+          "started_at" => now(),
+          "finished_at" => nil,
+          "error" => nil
+        }
+
+        Repo.put(queue_key(id), encode!(queue))
+        Repo.put(@active_queue_key, id)
+      end
+    end)
+  end
+
+  @spec start_queue_item(String.t(), String.t(), non_neg_integer()) ::
+          :ok | {:error, term()}
+  def start_queue_item(store, queue_id, position) do
+    update_queue(store, queue_id, fn queue ->
+      with :ok <- queue_position(queue, position),
+           {:ok, item} <- queue_item(queue, position),
+           :ok <- item_status(item, "pending") do
+        queue
+        |> put_queue_item(position, Map.put(item, "status", "running"))
+        |> Map.put("current_run_id", item["run_id"])
+      end
+    end)
+  end
+
+  @spec complete_queue_item(String.t(), String.t(), non_neg_integer(), String.t()) ::
+          :ok | {:error, term()}
+  def complete_queue_item(store, queue_id, position, expected_head) do
+    update_queue(store, queue_id, fn queue ->
+      with :ok <- queue_position(queue, position),
+           {:ok, item} <- queue_item(queue, position),
+           :ok <- item_status(item, "running") do
+        queue
+        |> put_queue_item(position, Map.put(item, "status", "completed"))
+        |> Map.put("expected_head", expected_head)
+        |> Map.put("current_position", position + 1)
+        |> Map.put("current_run_id", nil)
+      end
+    end)
+  end
+
+  @spec stop_queue_item(String.t(), String.t(), non_neg_integer(), term()) ::
+          :ok | {:error, term()}
+  def stop_queue_item(store, queue_id, position, error) do
+    transact(store, fn ->
+      with {:ok, queue} <- get(queue_key(queue_id)),
+           {:ok, item} <- queue_item(queue, position) do
+        stopped_item =
+          item |> Map.put("status", "stopped") |> Map.put("error", Event.normalize(error))
+
+        queue =
+          queue
+          |> put_queue_item(position, stopped_item)
+          |> stop_queue(error)
+
+        Repo.put(queue_key(queue_id), encode!(queue))
+        Repo.clear(@active_queue_key)
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @spec fail_queue(String.t(), String.t(), term()) :: :ok | {:error, term()}
+  def fail_queue(store, queue_id, error) do
+    transact(store, fn ->
+      with {:ok, queue} <- get(queue_key(queue_id)) do
+        Repo.put(queue_key(queue_id), encode!(stop_queue(queue, error)))
+        Repo.clear(@active_queue_key)
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @spec complete_queue(String.t(), String.t()) :: :ok | {:error, term()}
+  def complete_queue(store, queue_id) do
+    transact(store, fn ->
+      with {:ok, queue} <- get(queue_key(queue_id)) do
+        completed =
+          queue
+          |> Map.put("status", "completed")
+          |> Map.put("current_run_id", nil)
+          |> Map.put("finished_at", now())
+
+        Repo.put(queue_key(queue_id), encode!(completed))
+        Repo.clear(@active_queue_key)
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @spec fetch_queue(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def fetch_queue(store, id) do
+    transact(store, fn ->
+      case get(queue_key(id)) do
+        {:ok, queue} -> {:ok, queue}
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
   defp update_run(store, run_id, function) do
     transact(store, fn ->
       key = run_key(run_id)
@@ -171,6 +303,21 @@ defmodule Hancho.Workflow.Store do
         case function.(run) do
           %{} = updated -> Repo.put(key, encode!(updated))
           other -> other
+        end
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  defp update_queue(store, queue_id, function) do
+    transact(store, fn ->
+      key = queue_key(queue_id)
+
+      with {:ok, queue} <- get(key) do
+        case function.(queue) do
+          %{} = updated -> Repo.put(key, encode!(updated))
+          {:error, reason} -> Repo.rollback(reason)
         end
       else
         {:error, reason} -> Repo.rollback(reason)
@@ -219,6 +366,7 @@ defmodule Hancho.Workflow.Store do
   end
 
   defp run_key(run_id), do: @prefix <> encoded_id(run_id) <> "/run"
+  defp queue_key(queue_id), do: @queue_prefix <> encoded_id(queue_id) <> "/queue"
   defp step_prefix(run_id), do: @prefix <> encoded_id(run_id) <> "/steps/"
 
   defp step_key(run_id, position) do
@@ -226,6 +374,33 @@ defmodule Hancho.Workflow.Store do
   end
 
   defp encoded_id(run_id), do: Base.url_encode64(run_id, padding: false)
+
+  defp queue_position(%{"status" => "running", "current_position" => position}, position),
+    do: :ok
+
+  defp queue_position(_queue, _position), do: {:error, :invalid_queue_position}
+
+  defp queue_item(queue, position) do
+    case Enum.at(queue["items"], position) do
+      nil -> {:error, :queue_item_not_found}
+      item -> {:ok, item}
+    end
+  end
+
+  defp item_status(%{"status" => status}, status), do: :ok
+  defp item_status(_item, _status), do: {:error, :invalid_queue_item_status}
+
+  defp put_queue_item(queue, position, item) do
+    Map.update!(queue, "items", &List.replace_at(&1, position, item))
+  end
+
+  defp stop_queue(queue, error) do
+    queue
+    |> Map.put("status", "stopped")
+    |> Map.put("error", Event.normalize(error))
+    |> Map.put("finished_at", now())
+  end
+
   defp transact(store, function), do: Bedrock.transaction(store, function)
 
   defp encode!(value), do: value |> Event.normalize() |> Jason.encode!()

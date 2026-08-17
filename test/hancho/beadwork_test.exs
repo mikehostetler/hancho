@@ -21,6 +21,21 @@ defmodule Hancho.BeadworkTest do
          exit_status: 0
        }}
     end
+
+    def run("/test/bw", ["ready", "--json"], _options) do
+      {:ok, %Result{stdout: "null\n", stderr: "", exit_status: 0}}
+    end
+  end
+
+  defmodule ReadyCommand do
+    def run("/test/bw", ["ready", "--json"], _options) do
+      {:ok,
+       %Result{
+         stdout: ~s([{"id":"hancho-1","type":"task","status":"open"}]) <> "\n",
+         stderr: "",
+         exit_status: 0
+       }}
+    end
   end
 
   test "returns trimmed version output through the command boundary" do
@@ -41,5 +56,12 @@ defmodule Hancho.BeadworkTest do
   test "decodes issue command output as JSON" do
     assert Hancho.Beadwork.show("hancho-123", executable: "/test/bw", command: Command) ==
              {:ok, %{"id" => "hancho-123", "status" => "open"}}
+  end
+
+  test "normalizes empty and populated ready results" do
+    assert Hancho.Beadwork.ready(executable: "/test/bw", command: Command) == {:ok, []}
+
+    assert Hancho.Beadwork.ready(executable: "/test/bw", command: ReadyCommand) ==
+             {:ok, [%{"id" => "hancho-1", "type" => "task", "status" => "open"}]}
   end
 end

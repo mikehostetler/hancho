@@ -45,6 +45,9 @@ defmodule Hancho.Git do
   @spec head([option()]) :: {:ok, String.t()} | {:error, term()}
   def head(options \\ []), do: Git.rev_parse(ref: "HEAD", config: config(options))
 
+  @spec worktrees([option()]) :: {:ok, [Git.Worktree.t()]} | {:error, term()}
+  def worktrees(options \\ []), do: Git.worktree(config: config(options))
+
   @spec create_worktree(String.t(), String.t(), String.t(), [option()]) ::
           {:ok, :done} | {:error, term()}
   def create_worktree(repository, path, ref, options \\ []) do

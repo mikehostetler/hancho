@@ -22,6 +22,16 @@ defmodule Hancho.Beadwork do
   @spec show(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def show(issue_id, options \\ []), do: run_json(["show", issue_id, "--json"], options)
 
+  @spec ready(keyword()) :: {:ok, [map()]} | {:error, term()}
+  def ready(options \\ []) do
+    case run_json(["ready", "--json"], options) do
+      {:ok, nil} -> {:ok, []}
+      {:ok, issues} when is_list(issues) -> {:ok, issues}
+      {:ok, value} -> {:error, {:invalid_ready_result, value}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   @spec start(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def start(issue_id, options \\ []), do: run_json(["start", issue_id, "--json"], options)
 

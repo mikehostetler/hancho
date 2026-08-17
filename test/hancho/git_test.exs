@@ -13,6 +13,9 @@ defmodule Hancho.GitTest do
              Hancho.Git.status(working_dir: repository)
 
     assert entries == [%{index: "?", working_tree: "?", path: "new.txt"}]
+
+    assert {:ok, worktrees} = Hancho.Git.worktrees(working_dir: repository)
+    assert Enum.any?(worktrees, &(Path.expand(&1.path) == Path.expand(root)))
   end
 
   test "supports Git commands that read standard input" do

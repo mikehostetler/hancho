@@ -130,6 +130,40 @@ its SHA-256 value. The activity log writes `workflow.snapshot` and
 prompt, and matching hashes. These local audit records are intentionally not
 redacted and can contain private task data.
 
+## Foreground queues
+
+Run an explicit number of ready Beadwork tasks through one workflow:
+
+```sh
+./hancho queue implement --source beadwork-ready --count 5 --verbose
+```
+
+Hancho reads `bw ready --json` once, keeps ready items with the `task` type,
+and requires the requested number before it starts. It saves their order in
+Bedrock and runs one child workflow at a time. Each child has a deterministic
+run ID such as `queue-123-001` and keeps its normal workflow, prompt, step, and
+log snapshots.
+
+The command stays in the foreground and stops on the first failed child. It
+does not retry, skip, repair, or continue. `--verbose` prints queue selection,
+the checks before and after each child, child run IDs, landed commits, and the
+terminal queue result. Hancho also saves these events in the factory log:
+
+- `queue.started`
+- `queue.reconciled`
+- `queue.item_started`
+- `queue.item_completed`
+- `queue.stopped`
+- `queue.reconciliation_failed`
+- `queue.completed`
+
+At queue creation and each child boundary, Hancho compares durable queue state
+with the local repository. The main branch, HEAD, and clean status must match.
+The `.hancho/worktrees/` directories and Git worktree registrations must also
+match the child workflow state. A mismatch stops the queue with a
+`filesystem_out_of_sync` error. Hancho does not delete worktrees, prune Git
+state, reset HEAD, or change branches to repair a mismatch.
+
 ## Factory activity logs
 
 Hancho writes factory activity to `.hancho/logs/factory.jsonl` by default. These events contain command output, workflow changes, agent activity, and other factory work. They are separate from the normal diagnostic logs for the Hancho application.

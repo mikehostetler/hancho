@@ -9,6 +9,7 @@ defmodule Hancho.SchemaTest do
   alias Hancho.Log.Event
   alias Hancho.Project
   alias Hancho.Workflow.Definition
+  alias Hancho.Workflow.QueueResult
   alias Hancho.Workflow.Result, as: WorkflowResult
   alias Hancho.Workflow.Step
 
@@ -21,6 +22,7 @@ defmodule Hancho.SchemaTest do
     Event,
     Project,
     Definition,
+    QueueResult,
     Step,
     WorkflowResult
   ]
