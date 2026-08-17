@@ -6,14 +6,15 @@
   "blocks": [
     "hancho-3ed.4"
   ],
+  "closed_at": "2026-08-17T00:00:08Z",
   "created": "2026-08-16T23:49:05Z",
   "description": "Define a small Zoi-backed config struct, read .hancho/config.toml, provide defaults when absent, support dot-delimited value lookup, and integrate it with project and init.",
   "id": "hancho-3ed.3",
   "labels": [],
   "parent": "hancho-3ed",
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Add versioned Hancho configuration",
   "type": "task",
-  "updated_at": "2026-08-16T23:56:52Z"
+  "updated_at": "2026-08-17T00:00:08Z"
 }
