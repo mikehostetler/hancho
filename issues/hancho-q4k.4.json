@@ -1,6 +1,8 @@
 {
   "assignee": "",
-  "blocked_by": [],
+  "blocked_by": [
+    "hancho-q4k.1"
+  ],
   "blocks": [],
   "created": "2026-08-17T15:51:19Z",
   "description": "Add a workflow compile phase for action allowlist, parameter keys, references, prompts, providers, and verification executables. Use semantic artifacts instead of exact step-name coupling in queue, retry, and inspection.",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "Compile workflows before execution",
   "type": "task",
-  "updated_at": "2026-08-17T15:51:19Z"
+  "updated_at": "2026-08-17T15:51:28Z"
 }
