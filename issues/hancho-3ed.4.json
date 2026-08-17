@@ -4,14 +4,15 @@
     "hancho-3ed.3"
   ],
   "blocks": [],
+  "closed_at": "2026-08-17T00:04:54Z",
   "created": "2026-08-16T23:49:05Z",
   "description": "Test process-group cleanup, escript bootstrap, harness startup, CLI errors, and configuration success and failure paths.",
   "id": "hancho-3ed.4",
   "labels": [],
   "parent": "hancho-3ed",
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Harden core integration tests",
   "type": "task",
-  "updated_at": "2026-08-17T00:01:00Z"
+  "updated_at": "2026-08-17T00:04:54Z"
 }
