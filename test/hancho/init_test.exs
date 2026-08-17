@@ -22,6 +22,19 @@ defmodule Hancho.InitTest do
     assert {:ok, values} = config |> File.read!() |> TomlElixir.decode()
     assert values["version"] == 1
     assert Path.basename(values["repo"]["path"]) == Path.basename(repository)
+
+    assert values["logs"] == %{
+             "compress" => true,
+             "console" => true,
+             "enabled" => true,
+             "format" => "jsonl",
+             "include_internal" => false,
+             "max_bytes" => 10_485_760,
+             "max_files" => 5,
+             "path" => "factory.jsonl",
+             "sync_interval_ms" => 1_000
+           }
+
     assert File.dir?(Path.join(repository, ".hancho/logs"))
     assert File.dir?(Path.join(repository, ".hancho/state"))
     assert File.read!(Path.join(repository, ".gitignore")) == "_build/\n/.hancho/\n"

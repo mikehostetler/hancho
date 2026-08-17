@@ -23,6 +23,23 @@ defmodule Hancho.CommandTest do
              Command.run("/bin/cat", [], input: "hello")
   end
 
+  test "stops the process when its output callback fails" do
+    callback = fn :stdout, _data -> {:error, :disk_full} end
+
+    assert Command.run(
+             "/bin/sh",
+             ["-c", "printf output; sleep 30"],
+             on_output: callback
+           ) == {:error, {:output_callback_failed, :disk_full}}
+  end
+
+  test "contains exceptions from its output callback" do
+    callback = fn :stdout, _data -> raise "writer stopped" end
+
+    assert {:error, {:output_callback_failed, {:exception, %RuntimeError{}}}} =
+             Command.run("/bin/sh", ["-c", "printf output; sleep 30"], on_output: callback)
+  end
+
   test "stops the process and its child process on timeout" do
     directory = temporary_directory()
     shell_pid_path = Path.join(directory, "shell.pid")

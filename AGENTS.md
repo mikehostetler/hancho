@@ -9,6 +9,9 @@
 ## Technical choices
 
 - Use `jason` for JSON.
+- Use `Hancho.Log` for normalized factory activity. It uses Elixir Logger and
+  the OTP `:logger_std_h` file handler. Keep activity writes ordered and
+  durable. Do not add another Logger file-backend package without a new need.
 - Use `toml_elixir` to read TOML configuration files.
 - Use `zoi` to validate configuration data.
 - Read repository configuration through `Hancho.Config` and use dot-delimited keys.

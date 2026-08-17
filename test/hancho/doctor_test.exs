@@ -57,6 +57,7 @@ defmodule Hancho.DoctorTest do
 
     assert output =~ "PASS repository: /repo"
     assert output =~ "PASS config: version 1, repo /repo"
+    assert output =~ "jsonl logs at .hancho/logs/factory.jsonl"
     assert output =~ "PASS beadwork_version: bw 0.13.2"
     assert output =~ "PASS beadwork_repository: prefix=hancho, version=2"
     assert output =~ "PASS jido_harness: version 2.0.0"

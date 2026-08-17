@@ -35,7 +35,7 @@ try do
 
   config = File.read!(Path.join(repository, ".hancho/config.toml"))
 
-  unless config =~ "version = 1" and config =~ "[repo]" do
+  unless config =~ "version = 1" and config =~ "[repo]" and config =~ "[logs]" do
     raise "init did not write the default configuration"
   end
 after

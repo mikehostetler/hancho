@@ -2,6 +2,7 @@ defmodule Hancho.LogTest do
   use ExUnit.Case, async: false
 
   alias Hancho.Config
+  alias Hancho.Command
   alias Hancho.Log
   alias Hancho.Project
 
@@ -10,14 +11,16 @@ defmodule Hancho.LogTest do
     File.mkdir_p!(root)
     project = Project.new(root)
     {:ok, config} = Config.default(project)
+    previous_module_level = Log |> Logger.get_module_level() |> Keyword.get(Log)
 
     on_exit(fn ->
       _result = :logger.remove_handler(:hancho_factory_file)
       _result = :logger.remove_handler_filter(:default, :hancho_factory_console_filter)
+      restore_module_level(previous_module_level)
       File.rm_rf!(root)
     end)
 
-    %{project: project, config: config}
+    %{project: project, config: config, previous_module_level: previous_module_level}
   end
 
   test "writes ordered JSON Lines events with normalized metadata", context do
@@ -98,6 +101,24 @@ defmodule Hancho.LogTest do
     assert event["metadata"]["component"] == "scheduler"
   end
 
+  test "normalizes binary Hancho internal events", context do
+    config =
+      configure(context.config,
+        console: false,
+        include_internal: true,
+        sync_interval_ms: 0
+      )
+
+    assert {:ok, log} = Log.open(context.project, config)
+    assert :ok = Log.internal(:info, <<255, 0>>)
+    assert :ok = Log.sync(log)
+    assert :ok = Log.close(log)
+
+    [event] = read_json_lines(Path.join(context.project.logs_path, "factory.jsonl"))
+    assert event["message"] == Base.encode64(<<255, 0>>)
+    assert event["message_encoding"] == "base64"
+  end
+
   test "does not create a log when activity logging is disabled", context do
     config = configure(context.config, enabled: false)
 
@@ -125,6 +146,103 @@ defmodule Hancho.LogTest do
     assert event["message"] == "good"
   end
 
+  test "captures command output through a reusable sink", context do
+    config = configure(context.config, console: false, sync_interval_ms: 0)
+
+    assert {:ok, log} = Log.open(context.project, config, metadata: %{run_id: "run-2"})
+    sink = Log.output_sink(log, event_prefix: "process", metadata: %{command: "probe"})
+
+    assert {:ok, result} =
+             Command.run(
+               "/bin/sh",
+               ["-c", "printf output; printf error >&2"],
+               on_output: sink
+             )
+
+    assert result.stdout == "output"
+    assert result.stderr == "error"
+    assert :ok = Log.close(log)
+
+    events = read_json_lines(Path.join(context.project.logs_path, "factory.jsonl"))
+    assert Enum.map(events, & &1["sequence"]) == [1, 2]
+
+    assert Enum.sort(Enum.map(events, & &1["event"])) == [
+             "process.stderr",
+             "process.stdout"
+           ]
+
+    assert Enum.sort(Enum.map(events, & &1["message"])) == ["error", "output"]
+
+    assert Enum.all?(events, fn event ->
+             event["metadata"]["command"] == "probe" and
+               event["metadata"]["run_id"] == "run-2" and
+               event["metadata"]["stream"] in ["stdout", "stderr"]
+           end)
+  end
+
+  test "rotates and compresses activity logs", context do
+    config =
+      configure(context.config,
+        console: false,
+        sync_interval_ms: 0,
+        max_bytes: 300,
+        max_files: 2,
+        compress: true
+      )
+
+    assert {:ok, log} = Log.open(context.project, config)
+
+    for number <- 1..12 do
+      assert :ok = Log.write(log, String.duplicate("x", 100), metadata: %{number: number})
+    end
+
+    path = Log.path(log)
+    assert :ok = Log.close(log)
+
+    assert File.exists?(path)
+    assert File.exists?(path <> ".0.gz")
+    assert File.exists?(path <> ".1.gz")
+
+    archived_events =
+      path
+      |> Kernel.<>(".0.gz")
+      |> File.read!()
+      |> :zlib.gunzip()
+      |> String.split("\n", trim: true)
+      |> Enum.map(&Jason.decode!/1)
+
+    assert archived_events != []
+    assert Enum.all?(archived_events, &(&1["schema_version"] == 1))
+  end
+
+  test "writes activity below the primary Logger level", context do
+    previous_level = Logger.level()
+    on_exit(fn -> Logger.configure(level: previous_level) end)
+    :ok = Logger.configure(level: :error)
+
+    config = configure(context.config, console: false, sync_interval_ms: 0)
+    assert {:ok, log} = Log.open(context.project, config)
+    assert :ok = Log.write(log, "debug detail", level: :debug)
+    assert :ok = Log.close(log)
+
+    [event] = read_json_lines(Path.join(context.project.logs_path, "factory.jsonl"))
+    assert event["level"] == "debug"
+    assert event["message"] == "debug detail"
+    assert Log |> Logger.get_module_level() |> Keyword.get(Log) == context.previous_module_level
+  end
+
+  test "keeps the active writer usable when a second writer cannot open", context do
+    config = configure(context.config, console: false, sync_interval_ms: 0)
+
+    assert {:ok, log} = Log.open(context.project, config)
+    assert {:error, _reason} = Log.open(context.project, config)
+    assert :ok = Log.write(log, "still active")
+    assert :ok = Log.close(log)
+
+    [event] = read_json_lines(Path.join(context.project.logs_path, "factory.jsonl"))
+    assert event["message"] == "still active"
+  end
+
   defp configure(config, options) do
     logs =
       Enum.reduce(options, config.logs, fn {key, value}, logs -> Map.put(logs, key, value) end)
@@ -138,4 +256,7 @@ defmodule Hancho.LogTest do
     |> String.split("\n", trim: true)
     |> Enum.map(&Jason.decode!/1)
   end
+
+  defp restore_module_level(nil), do: Logger.delete_module_level(Log)
+  defp restore_module_level(level), do: Logger.put_module_level(Log, level)
 end

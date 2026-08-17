@@ -100,7 +100,14 @@ defmodule Hancho.Doctor do
   end
 
   defp config_check({:ok, config}) do
-    check("config", :pass, "version #{config.version}, repo #{config.repo.path}")
+    logs =
+      if config.logs.enabled do
+        "#{config.logs.format} logs at .hancho/logs/#{config.logs.path}"
+      else
+        "logs disabled"
+      end
+
+    check("config", :pass, "version #{config.version}, repo #{config.repo.path}, #{logs}")
   end
 
   defp config_check({:error, %Hancho.Config.Error{} = error}),

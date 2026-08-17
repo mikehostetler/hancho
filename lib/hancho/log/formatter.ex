@@ -37,18 +37,16 @@ defmodule Hancho.Log.Formatter do
     metadata =
       event.meta
       |> Map.drop([:hancho_event, :time])
-      |> Event.normalize()
 
-    %{
-      "schema_version" => 1,
-      "sequence" => 0,
-      "timestamp" => timestamp(event.meta[:time]),
-      "level" => Atom.to_string(event.level),
-      "event" => "hancho.internal",
-      "message" => event |> message() |> Event.normalize(),
-      "message_encoding" => "utf8",
-      "metadata" => metadata
-    }
+    {:ok, normalized} =
+      Event.new(message(event),
+        event: "hancho.internal",
+        level: event.level,
+        timestamp: timestamp(event.meta[:time]),
+        metadata: metadata
+      )
+
+    Event.to_map(normalized)
   end
 
   defp format_internal_text(event) do

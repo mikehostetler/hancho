@@ -20,6 +20,8 @@ defmodule Hancho.Log do
   @queue_limit 1_000
 
   @type handle :: pid() | :disabled
+  @type output_stream :: :stdout | :stderr
+  @type output_sink :: (output_stream(), binary() -> :ok | {:error, term()})
   @type write_option ::
           {:event, String.t()} | {:level, Logger.level()} | {:metadata, map() | keyword()}
 
@@ -30,7 +32,14 @@ defmodule Hancho.Log do
     do: {:ok, :disabled}
 
   def open(%Project{} = project, %Config{} = config, options) do
-    GenServer.start_link(__MODULE__, {project, config.logs, options})
+    case GenServer.start(__MODULE__, {project, config.logs, options}) do
+      {:ok, pid} ->
+        Process.link(pid)
+        {:ok, pid}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @spec write(handle(), iodata(), [write_option()]) :: :ok | {:error, term()}
@@ -40,6 +49,27 @@ defmodule Hancho.Log do
 
   def write(pid, message, options) when is_pid(pid) do
     GenServer.call(pid, {:write, message, options}, :infinity)
+  end
+
+  @doc """
+  Returns a callback that writes process output as factory activity.
+
+  Pass the callback as the `:on_output` option to `Hancho.Command.run/3`.
+  `:event_prefix`, `:level`, and `:metadata` customize the generated events.
+  """
+  @spec output_sink(handle(), keyword()) :: output_sink()
+  def output_sink(handle, options \\ []) do
+    event_prefix = Keyword.get(options, :event_prefix, "command")
+    level = Keyword.get(options, :level, :info)
+    metadata = Keyword.get(options, :metadata, %{})
+
+    fn stream, output ->
+      write(handle, output,
+        event: "#{event_prefix}.#{stream}",
+        level: level,
+        metadata: put_stream(metadata, stream)
+      )
+    end
   end
 
   @spec sync(handle()) :: :ok | {:error, term()}
@@ -64,14 +94,15 @@ defmodule Hancho.Log do
     with {:ok, base_metadata} <- normalize_metadata(Keyword.get(options, :metadata, %{})),
          {:ok, path} <- Project.log_path(project, logs.path),
          :ok <- prepare_file(project, path),
-         :ok <- install_handlers(path, logs) do
+         {:ok, previous_module_level} <- activate_logger(path, logs) do
       {:ok,
        %{
          path: path,
          logs: logs,
          sequence: 0,
          base_metadata: base_metadata,
-         console_filter?: not logs.console
+         console_filter?: not logs.console,
+         previous_module_level: previous_module_level
        }}
     else
       {:error, reason} -> {:stop, reason}
@@ -114,6 +145,8 @@ defmodule Hancho.Log do
     if state.console_filter? do
       _result = :logger.remove_handler_filter(:default, @console_filter)
     end
+
+    restore_module_level(state.previous_module_level)
 
     :ok
   end
@@ -174,6 +207,19 @@ defmodule Hancho.Log do
     end
   end
 
+  defp activate_logger(path, logs) do
+    with {:ok, previous_level} <- enable_all_activity_levels() do
+      case install_handlers(path, logs) do
+        :ok ->
+          {:ok, previous_level}
+
+        {:error, reason} ->
+          restore_module_level(previous_level)
+          {:error, reason}
+      end
+    end
+  end
+
   defp configure_console(%Logs{console: true}), do: :ok
 
   defp configure_console(%Logs{console: false, include_internal: include_internal?}) do
@@ -211,4 +257,27 @@ defmodule Hancho.Log do
 
   defp normalize_metadata(metadata) when is_map(metadata), do: {:ok, Event.normalize(metadata)}
   defp normalize_metadata(metadata), do: {:error, {:invalid_metadata, metadata}}
+
+  defp enable_all_activity_levels do
+    previous_level =
+      __MODULE__
+      |> Logger.get_module_level()
+      |> Keyword.get(__MODULE__)
+
+    case Logger.put_module_level(__MODULE__, :all) do
+      :ok -> {:ok, previous_level}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp restore_module_level(nil), do: Logger.delete_module_level(__MODULE__)
+  defp restore_module_level(level), do: Logger.put_module_level(__MODULE__, level)
+
+  defp put_stream(metadata, stream) when is_map(metadata), do: Map.put(metadata, :stream, stream)
+
+  defp put_stream(metadata, stream) when is_list(metadata) do
+    if Keyword.keyword?(metadata), do: Keyword.put(metadata, :stream, stream), else: metadata
+  end
+
+  defp put_stream(metadata, _stream), do: metadata
 end

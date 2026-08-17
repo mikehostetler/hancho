@@ -11,10 +11,14 @@ defmodule Hancho.Command do
   @default_timeout 30_000
   @shutdown_timeout 5_000
 
+  @type output_stream :: :stdout | :stderr
+  @type output_callback :: (output_stream(), binary() -> :ok | {:error, term()})
+
   @type option ::
           {:cwd, String.t()}
           | {:env, [{String.t(), String.t() | false}]}
           | {:input, iodata()}
+          | {:on_output, output_callback()}
           | {:stderr_to_stdout, boolean()}
           | {:timeout, pos_integer()}
 
@@ -23,11 +27,12 @@ defmodule Hancho.Command do
     timeout = Keyword.get(options, :timeout, @default_timeout)
     deadline = System.monotonic_time(:millisecond) + timeout
     input = Keyword.get(options, :input)
+    on_output = Keyword.get(options, :on_output)
 
     with :ok <- Hancho.Command.Runtime.ensure_started(),
          {:ok, _pid, os_pid} <- start(executable, arguments, input, options, deadline) do
       case send_input(os_pid, input) do
-        :ok -> collect(os_pid, [], [], deadline)
+        :ok -> collect(os_pid, [], [], on_output, deadline)
         {:error, reason} -> stop_after_error(os_pid, reason)
       end
     end
@@ -60,13 +65,19 @@ defmodule Hancho.Command do
     end
   end
 
-  defp collect(os_pid, stdout, stderr, deadline) do
+  defp collect(os_pid, stdout, stderr, on_output, deadline) do
     receive do
       {:stdout, ^os_pid, data} ->
-        collect(os_pid, [stdout, data], stderr, deadline)
+        case emit(on_output, :stdout, data) do
+          :ok -> collect(os_pid, [stdout, data], stderr, on_output, deadline)
+          {:error, reason} -> stop_after_error(os_pid, {:output_callback_failed, reason})
+        end
 
       {:stderr, ^os_pid, data} ->
-        collect(os_pid, stdout, [stderr, data], deadline)
+        case emit(on_output, :stderr, data) do
+          :ok -> collect(os_pid, stdout, [stderr, data], on_output, deadline)
+          {:error, reason} -> stop_after_error(os_pid, {:output_callback_failed, reason})
+        end
 
       {:DOWN, ^os_pid, :process, _pid, :normal} ->
         result(stdout, stderr, 0)
@@ -80,6 +91,22 @@ defmodule Hancho.Command do
       remaining(deadline) -> stop(os_pid)
     end
   end
+
+  defp emit(nil, _stream, _data), do: :ok
+
+  defp emit(callback, stream, data) when is_function(callback, 2) do
+    case callback.(stream, data) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+      other -> {:error, {:invalid_return, other}}
+    end
+  rescue
+    error -> {:error, {:exception, error}}
+  catch
+    kind, reason -> {:error, {kind, reason}}
+  end
+
+  defp emit(callback, _stream, _data), do: {:error, {:invalid_callback, callback}}
 
   defp finish(stdout, stderr, status) do
     case :exec.status(status) do
