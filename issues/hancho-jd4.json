@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T00:09:34Z",
+  "description": "Capture normalized factory activity through Elixir Logger and OTP file handlers in the repository-local .hancho/logs folder.",
+  "id": "hancho-jd4",
+  "labels": [],
+  "priority": 1,
+  "status": "open",
+  "title": "Add durable factory activity logs",
+  "type": "epic",
+  "updated_at": "2026-08-17T00:09:34Z"
+}
