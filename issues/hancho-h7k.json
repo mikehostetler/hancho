@@ -3,12 +3,12 @@
   "blocked_by": [],
   "blocks": [],
   "created": "2026-08-17T18:44:11Z",
-  "description": "Two simultaneous production  processes for the same repository derive the same distributed Erlang node name in Hancho.State.Bedrock.ensure_distribution/1. One process fails with  and a low-level  error. Add an explicit cross-process repository state lock or another safe serialization boundary, and return a stable Hancho error instead of allowing concurrent Bedrock clusters to contend for the same local state.",
+  "description": "Two simultaneous production run-inspect processes for the same repository derive the same distributed Erlang node name in Hancho.State.Bedrock.ensure_distribution/1. One process fails with nodistribution and a low-level bedrock_start error. Add an explicit cross-process repository state lock or another safe serialization boundary, and return a stable Hancho error instead of allowing concurrent Bedrock clusters to contend for the same local state.",
   "id": "hancho-h7k",
   "labels": [],
   "priority": 2,
   "status": "open",
   "title": "Serialize concurrent state inspection",
   "type": "task",
-  "updated_at": "2026-08-17T18:44:11Z"
+  "updated_at": "2026-08-17T18:44:26Z"
 }
