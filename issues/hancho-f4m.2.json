@@ -2,14 +2,15 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T14:27:12Z",
   "created": "2026-08-17T14:25:02Z",
   "description": "Make queue dry-run perform read-only repository and retained-worktree reconciliation and report provider and timeout settings.",
   "id": "hancho-f4m.2",
   "labels": [],
   "parent": "hancho-f4m",
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Add complete dry-run reconciliation",
   "type": "task",
-  "updated_at": "2026-08-17T14:26:06Z"
+  "updated_at": "2026-08-17T14:27:12Z"
 }
