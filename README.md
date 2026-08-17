@@ -152,15 +152,15 @@ a worktree, or calling an agent:
 ./hancho queue implement --source beadwork-ready --count 1 --dry-run
 ```
 
-If `bw ready` returns only container issues, Hancho derives ready tasks from
-`bw list --all`. A task is ready when it is open or in progress and each named
-blocker is closed. Execution cards with a `Queue ordinal` in their description
-are selected in that order.
+If `bw ready` returns fewer tasks than the requested count, Hancho derives ready
+tasks from `bw list --all`. A task is ready when it is open or in progress and
+each named blocker is closed. Execution cards with a `Queue ordinal` in their
+description are selected in that order.
 
 Hancho first reads `bw ready --json` and keeps ready items with the `task` type.
 It uses the full-list fallback described above only when that command returns
-no tasks. Hancho requires the requested number before it starts. It saves their
-order in Bedrock and runs one child workflow at a time. Each child has a
+too few tasks. Hancho requires the requested number before it starts. It saves
+their order in Bedrock and runs one child workflow at a time. Each child has a
 deterministic run ID such as `queue-123-001` and keeps its normal workflow,
 prompt, step, and log snapshots.
 

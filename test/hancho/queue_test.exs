@@ -44,6 +44,25 @@ defmodule Hancho.QueueTest do
     end
   end
 
+  defmodule InsufficientReadyBeadwork do
+    def ready(_options), do: {:ok, [issue("task-2", 20)]}
+
+    def list_all(_options) do
+      {:ok, [issue("task-2", 20), issue("task-1", 10)]}
+    end
+
+    defp issue(id, ordinal) do
+      %{
+        "id" => id,
+        "title" => id,
+        "type" => "task",
+        "status" => "open",
+        "blocked_by" => [],
+        "description" => "Queue ordinal: `#{ordinal}`"
+      }
+    end
+  end
+
   defmodule Reconciler do
     def initial(project, _options) do
       {:ok, %{repository: project.root, branch: "main", head: "head-0", worktrees: []}}
@@ -241,6 +260,17 @@ defmodule Hancho.QueueTest do
 
     assert preview.issues == [%{"id" => "task-next", "status" => "open"}]
     refute File.exists?(project.bedrock_path)
+  end
+
+  test "fills an insufficient ready task result from all issues" do
+    project = Hancho.Project.new(temporary_directory())
+
+    assert {:ok, preview} =
+             QueueRunner.preview(project, "implement", "beadwork-ready", 2,
+               beadwork: InsufficientReadyBeadwork
+             )
+
+    assert Enum.map(preview.issues, & &1["id"]) == ["task-1", "task-2"]
   end
 
   test "stops on the first failed child and leaves later items pending" do

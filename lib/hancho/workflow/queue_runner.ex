@@ -380,16 +380,17 @@ defmodule Hancho.Workflow.QueueRunner do
 
   defp ready_issues(beadwork, repository, count) do
     with {:ok, ready} <- beadwork.ready(working_dir: repository),
-         {:ok, candidates} <- task_candidates(beadwork, repository, ready) do
+         {:ok, candidates} <- task_candidates(beadwork, repository, ready, count) do
       select_issues(candidates, count)
     end
   end
 
-  defp task_candidates(beadwork, repository, ready) do
-    case Enum.filter(ready, &ready_task?/1) do
-      [] -> ready_tasks_from_all(beadwork, repository)
-      tasks -> {:ok, tasks}
-    end
+  defp task_candidates(beadwork, repository, ready, count) do
+    tasks = Enum.filter(ready, &ready_task?/1)
+
+    if length(tasks) >= count,
+      do: {:ok, tasks},
+      else: ready_tasks_from_all(beadwork, repository)
   end
 
   defp ready_tasks_from_all(beadwork, repository) do
