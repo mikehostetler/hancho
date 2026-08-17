@@ -7,7 +7,7 @@ defmodule Hancho.Actions.Land do
     schema:
       Zoi.object(%{
         repo_path: Zoi.string() |> Zoi.min(1),
-        branch: Zoi.string() |> Zoi.min(1),
+        branch: Zoi.string() |> Zoi.min(1) |> Zoi.optional(),
         baseline: Zoi.string() |> Zoi.min(1),
         commit: Zoi.string() |> Zoi.min(1)
       })
@@ -19,21 +19,33 @@ defmodule Hancho.Actions.Land do
   def run(params, context) do
     git = Context.service(context, :git, Hancho.Git)
 
-    intent = %{
-      repository: params.repo_path,
-      branch: params.branch,
-      baseline: params.baseline,
-      commit: params.commit
-    }
+    with {:ok, branch} <- landing_branch(params, context) do
+      params = Map.put(params, :branch, branch)
 
-    Effect.run(
-      context,
-      "land",
-      "git.fast_forward",
-      intent,
-      fn -> reconcile(git, params) end,
-      fn -> land(git, params) end
-    )
+      intent = %{
+        repository: params.repo_path,
+        branch: branch,
+        baseline: params.baseline,
+        commit: params.commit
+      }
+
+      Effect.run(
+        context,
+        "land",
+        "git.fast_forward",
+        intent,
+        fn -> reconcile(git, params) end,
+        fn -> land(git, params) end
+      )
+    end
+  end
+
+  defp landing_branch(params, context) do
+    branch = Map.get(params, :branch) || get_in(context, [:artifacts, "repository", "branch"])
+
+    if is_binary(branch) and branch != "",
+      do: {:ok, branch},
+      else: {:error, "The landing branch is not available from the workflow or preflight state."}
   end
 
   defp reconcile(git, params) do

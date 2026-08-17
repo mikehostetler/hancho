@@ -350,6 +350,38 @@ defmodule Hancho.WorkflowTest do
     assert prompt_event["metadata"]["sha256"] == result.outputs["render_prompt"]["sha256"]
   end
 
+  test "lands a legacy workflow from its durable preflight branch artifact" do
+    repository = temporary_repository()
+    project = Hancho.Project.new(repository)
+    File.mkdir_p!(project.worktrees_path)
+    assert :ok = Hancho.Workflow.Default.install(project)
+    write_quiet_log_config(project)
+
+    legacy_workflow =
+      String.replace(
+        Hancho.Workflow.Default.implementation(),
+        "      branch: \"$steps.preflight.branch\"\n",
+        ""
+      )
+
+    refute legacy_workflow == Hancho.Workflow.Default.implementation()
+    File.write!(Path.join(project.workflows_path, "implement.yaml"), legacy_workflow)
+
+    assert {:ok, result} =
+             Runner.run(
+               project,
+               "implement",
+               %{"repo_path" => repository, "issue_id" => "hancho-123"},
+               run_id: "legacy-land",
+               flush_state: false,
+               services: %{beadwork: Beadwork, harness: Harness, command: Command}
+             )
+
+    assert result.status == :completed
+    assert result.outputs["land"]["branch"] == "main"
+    assert File.read!(Path.join(repository, "implemented.txt")) == "implemented\n"
+  end
+
   defp successful_workflow do
     """
     name: test
