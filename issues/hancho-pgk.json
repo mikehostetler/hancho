@@ -2,13 +2,14 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T18:13:23Z",
   "created": "2026-08-17T18:08:39Z",
   "description": "Allow a foreground queue to select a later open task when every non-closed blocker is already an earlier selected queue item. Preserve deterministic Queue ordinal order and reject unresolved blockers.",
   "id": "hancho-pgk",
   "labels": [],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Select serial dependency chains",
   "type": "task",
-  "updated_at": "2026-08-17T18:08:58Z"
+  "updated_at": "2026-08-17T18:13:23Z"
 }
