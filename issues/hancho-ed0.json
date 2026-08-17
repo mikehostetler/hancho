@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
   "created": "2026-08-17T00:33:11Z",
@@ -7,8 +7,8 @@
   "id": "hancho-ed0",
   "labels": [],
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "Convert Hancho structs to Zoi",
   "type": "task",
-  "updated_at": "2026-08-17T00:33:11Z"
+  "updated_at": "2026-08-17T00:33:26Z"
 }
