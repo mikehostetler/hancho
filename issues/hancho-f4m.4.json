@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T14:25:02Z",
+  "description": "Coalesce verification output, retain complete raw output, and keep console and factory activity concise.",
+  "id": "hancho-f4m.4",
+  "labels": [],
+  "parent": "hancho-f4m",
+  "priority": 2,
+  "status": "open",
+  "title": "Compact verification activity",
+  "type": "task",
+  "updated_at": "2026-08-17T14:25:02Z"
+}
