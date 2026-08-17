@@ -139,8 +139,8 @@ Hancho uses [Jido.Action](https://hex.pm/packages/jido_action) for validated
 workflow actions and [yaml_elixir](https://hex.pm/packages/yaml_elixir) for
 workflow definitions. Hancho uses [Bedrock](https://github.com/bedrock-kv/bedrock)
 for durable, repository-local workflow state. The dependency points directly to
-the Bedrock 0.4.1 Git commit. During dependency compilation, Hancho applies the
-upstream duplicate-boundary fix with `scripts/patch_bedrock.exs`. The script
-fails if the pinned source no longer has the tested form.
+the tested `hancho/bedrock-next` integration commit in Mike Hostetler's Bedrock
+fork. That commit combines the current upstream recovery stack with the
+layout-index fixes required by Hancho.
 
 Hancho uses the [`git`](https://hex.pm/packages/git) package behind `Hancho.Git`. Git processes run through erlexec so Hancho can stop a timed-out command and its child processes.

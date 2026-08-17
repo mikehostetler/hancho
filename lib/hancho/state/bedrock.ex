@@ -5,6 +5,8 @@ defmodule Hancho.State.Bedrock do
 
   alias Hancho.State.{Cluster, Repo}
   alias Bedrock.Cluster.Descriptor
+  alias Bedrock.ObjectStorage
+  alias Bedrock.ObjectStorage.LocalFilesystem
 
   @ready_retry_limit 100
   @storage_window_in_ms 5_000
@@ -135,12 +137,20 @@ defmodule Hancho.State.Bedrock do
   defp configure(path) do
     workers_path = Path.join(path, "workers")
 
+    object_storage =
+      ObjectStorage.backend(LocalFilesystem,
+        root: Path.join(path, "object_storage")
+      )
+
     Application.put_env(:hancho, Cluster,
-      capabilities: [:coordination, :log, :storage],
+      capabilities: [:coordination, :log, :materializer],
+      durability_mode: :relaxed,
       trace: [],
       path_to_descriptor: Path.join(path, "bedrock.cluster"),
+      object_storage: object_storage,
       coordinator: [path: Path.join(path, "coordinator")],
-      storage: [path: workers_path],
+      worker: [object_storage: object_storage],
+      materializer: [path: workers_path],
       log: [path: workers_path]
     )
 

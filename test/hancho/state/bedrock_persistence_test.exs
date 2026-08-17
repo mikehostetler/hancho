@@ -1,6 +1,8 @@
 defmodule Hancho.State.BedrockPersistenceTest do
   use ExUnit.Case, async: false
 
+  @moduletag :subprocess
+
   test "reads flushed state in a new operating-system process" do
     path =
       Path.join(
@@ -36,7 +38,7 @@ defmodule Hancho.State.BedrockPersistenceTest do
   defp run_mix(expression) do
     System.cmd(
       System.find_executable("elixir"),
-      ["-S", "mix", "run", "-e", expression],
+      ["-S", "mix", "run", "--no-compile", "--no-deps-check", "-e", expression],
       cd: Path.expand("../../..", __DIR__),
       env: [{"MIX_ENV", "test"}],
       stderr_to_stdout: true

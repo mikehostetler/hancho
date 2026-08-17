@@ -78,7 +78,7 @@ try do
     )
 
   unless second_run_output =~ "stopped at preflight" do
-    raise "a new escript process could not reopen Bedrock state"
+    raise "a new escript process could not reopen Bedrock state:\n#{second_run_output}"
   end
 after
   File.rm_rf!(repository)

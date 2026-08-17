@@ -24,7 +24,7 @@
 - Keep action module resolution in an explicit allowlist. Do not create atoms
   from YAML action names.
 - Store durable workflow and step state in a Bedrock cluster at
-  `.hancho/bedrock/`. Keep all Bedrock descriptor, coordinator, log, and storage
+  `.hancho/bedrock/`. Keep all Bedrock descriptor, coordinator, log, and materializer
   worker files in that repository-local folder. Use atomic transactions for
   state changes and flush the storage window before the CLI exits.
 - Keep the first workflow sequential and in the foreground. Stop on the first

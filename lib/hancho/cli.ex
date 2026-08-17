@@ -19,7 +19,7 @@ defmodule Hancho.CLI do
   def main(args) do
     case run(args) do
       0 -> :ok
-      status -> System.halt(status)
+      status -> System.stop(status)
     end
   end
 

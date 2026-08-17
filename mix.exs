@@ -23,7 +23,8 @@ defmodule Hancho.MixProject do
 
   defp deps do
     [
-      {:bedrock, github: "bedrock-kv/bedrock", ref: "0c8dba25ab30e57f0f4b60fe3b05f330eea18712"},
+      {:bedrock,
+       github: "mikehostetler/bedrock", ref: "6d7aa745ee6b3376f260bba1bda8b3c4c34539c2"},
       {:erlexec, "~> 2.3.4", runtime: false},
       {:git, "~> 0.7.0"},
       {:jason, "~> 1.4"},
@@ -38,19 +39,14 @@ defmodule Hancho.MixProject do
 
   defp aliases do
     [
-      compile: [&patch_bedrock/1, "compile"],
       check: [
         "format --check-formatted",
         "compile --warnings-as-errors",
-        "test --cover",
+        "test --cover --exclude subprocess",
+        "test --only subprocess",
         "escript.build",
         "cmd elixir scripts/escript_smoke.exs"
       ]
     ]
-  end
-
-  defp patch_bedrock(_args) do
-    Code.require_file("scripts/patch_bedrock.exs", __DIR__)
-    Hancho.Build.PatchBedrock.run(Path.join(__DIR__, "deps/bedrock"))
   end
 end
