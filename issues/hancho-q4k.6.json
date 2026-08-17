@@ -1,6 +1,8 @@
 {
   "assignee": "",
-  "blocked_by": [],
+  "blocked_by": [
+    "hancho-q4k.2"
+  ],
   "blocks": [],
   "created": "2026-08-17T15:51:19Z",
   "description": "Split issue selection, queue planning, execution, reporting, and adapter data. Remove or enforce dead repo.path configuration. Keep typed task data and store state behind explicit boundaries.",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "Clean factory architecture boundaries",
   "type": "task",
-  "updated_at": "2026-08-17T15:51:19Z"
+  "updated_at": "2026-08-17T15:51:28Z"
 }
