@@ -1,25 +1,27 @@
 defmodule Hancho.Workflow.RunReconciler do
   @moduledoc "Checks saved Git state before a stopped workflow runs again."
 
-  alias Hancho.Workflow.QueueReconciler
+  alias Hancho.Workflow.{Artifacts, QueueReconciler}
 
   @spec retry(Hancho.Project.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
   def retry(project, outputs, options \\ []) do
     git = Keyword.get(options, :git, Hancho.Git)
+    definition = Keyword.fetch!(options, :definition)
+    artifacts = Artifacts.from_outputs(definition, outputs)
 
-    case outputs["preflight"] do
+    case Artifacts.fetch(artifacts, "repository") do
       nil ->
         QueueReconciler.initial(project, options)
 
       preflight ->
-        expected_head = get_in(outputs, ["land", "commit"]) || preflight["baseline"]
+        expected_head = get_in(artifacts, ["landing", "commit"]) || preflight["baseline"]
 
         with {:ok, status} <- git.status(working_dir: project.root),
              :ok <- equal("repository_status", [], status.entries),
              :ok <- equal("branch", preflight["branch"], status.branch),
              {:ok, head} <- git.head(working_dir: project.root),
              :ok <- equal("head", expected_head, head),
-             :ok <- check_worktree(project, outputs, git) do
+             :ok <- check_worktree(project, artifacts, git) do
           {:ok, %{branch: status.branch, head: head, clean: true}}
         end
     end
@@ -27,14 +29,14 @@ defmodule Hancho.Workflow.RunReconciler do
 
   defp check_worktree(
          _project,
-         %{"create_worktree" => _created, "remove_worktree" => _removed},
+         %{"worktree_created" => _created, "worktree_removed" => _removed},
          _git
        ),
        do: :ok
 
-  defp check_worktree(project, %{"create_worktree" => created} = outputs, git) do
+  defp check_worktree(project, %{"worktree_created" => created} = artifacts, git) do
     path = Path.expand(created["worktree_path"])
-    expected_head = get_in(outputs, ["commit", "commit"]) || created["baseline"]
+    expected_head = get_in(artifacts, ["commit", "commit"]) || created["baseline"]
 
     with :ok <- under_root(path, project.worktrees_path),
          :ok <- equal("worktree_directory", true, File.dir?(path)),
@@ -43,7 +45,7 @@ defmodule Hancho.Workflow.RunReconciler do
          :ok <- equal("worktree_head", expected_head, registration.head),
          :ok <- equal("worktree_detached", true, registration.detached),
          {:ok, status} <- git.status(working_dir: path),
-         :ok <- committed_worktree_clean(outputs, status) do
+         :ok <- committed_worktree_clean(artifacts, status) do
       :ok
     else
       {:error, reason} -> {:error, with_path(reason, path)}

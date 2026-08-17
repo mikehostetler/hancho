@@ -94,7 +94,12 @@ defmodule Hancho.Workflow.Runner do
          {:ok, steps} <- store_api.list_steps(store, run_id),
          {:ok, position} <- resumable_position(steps),
          {:ok, outputs} <- completed_outputs(steps),
-         {:ok, _summary} <- reconciler.retry(project, outputs, reconcile_options(options)),
+         {:ok, _summary} <-
+           reconciler.retry(
+             project,
+             outputs,
+             Keyword.put(reconcile_options(options), :definition, definition)
+           ),
          {:ok, log} <- open_log(project, run_id, options) do
       try do
         with :ok <- store_api.retry_run(store, run_id, position),
@@ -115,7 +120,8 @@ defmodule Hancho.Workflow.Runner do
                  services: Keyword.get(options, :services, %{}),
                  log: log,
                  index: position,
-                 outputs: outputs
+                 outputs: outputs,
+                 artifacts: Hancho.Workflow.Artifacts.from_outputs(definition, outputs)
                }) do
           {:ok, Runtime.run(pid)}
         end

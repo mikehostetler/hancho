@@ -38,10 +38,10 @@ defmodule Hancho.Workflow.QueueReconciler do
 
   @spec after_run(Hancho.Project.t(), map(), map(), keyword()) ::
           {:ok, map()} | {:error, map() | term()}
-  def after_run(project, queue, outputs, options \\ []) do
+  def after_run(project, queue, artifacts, options \\ []) do
     git = Keyword.get(options, :git, Hancho.Git)
-    expected_head = get_in(outputs, ["land", "commit"]) || queue["expected_head"]
-    expected_worktrees = queue_worktrees(queue) ++ run_worktrees(outputs)
+    expected_head = get_in(artifacts, ["landing", "commit"]) || queue["expected_head"]
+    expected_worktrees = queue_worktrees(queue) ++ run_worktrees(artifacts)
 
     check(project, queue["expected_branch"], expected_head, expected_worktrees, git)
   end
@@ -70,10 +70,10 @@ defmodule Hancho.Workflow.QueueReconciler do
     end
   end
 
-  defp run_worktrees(outputs) do
-    created = outputs["create_worktree"]
-    removed = outputs["remove_worktree"]
-    committed = outputs["commit"]
+  defp run_worktrees(artifacts) do
+    created = artifacts["worktree_created"]
+    removed = artifacts["worktree_removed"]
+    committed = artifacts["commit"]
 
     if created && !removed do
       [

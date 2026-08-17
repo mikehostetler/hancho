@@ -39,6 +39,14 @@ defmodule Hancho.Workflow.StepRecord do
   @spec new(map()) :: {:ok, t()} | {:error, term()}
   def new(attributes), do: Zoi.parse(@schema, attributes)
 
+  @spec upgrade(map()) :: map()
+  def upgrade(attributes) do
+    attributes
+    |> Map.put_new("record_version", @record_version)
+    |> Map.put_new("transition_version", 0)
+    |> Map.put_new("operation_json", nil)
+  end
+
   @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = record) do
     record

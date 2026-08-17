@@ -734,11 +734,16 @@ defmodule Hancho.Workflow.Store do
 
   defp decode_record(value, module) do
     with {:ok, decoded} <- decode(value),
-         {:ok, record} <- module.new(decoded) do
+         upgraded <- upgrade_record(module, decoded),
+         {:ok, record} <- module.new(upgraded) do
       {:ok, module.to_map(record)}
     else
       {:error, reason} -> {:error, {:invalid_state_record, module, reason}}
     end
+  end
+
+  defp upgrade_record(module, decoded) do
+    if function_exported?(module, :upgrade, 1), do: module.upgrade(decoded), else: decoded
   end
 
   defp bump(record),

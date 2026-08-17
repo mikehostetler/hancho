@@ -9,6 +9,7 @@ defmodule Hancho.Workflow.Result do
               status: Zoi.enum([:completed, :stopped]),
               current_step: Zoi.string() |> Zoi.nullish(),
               outputs: Zoi.map() |> Zoi.default(%{}),
+              artifacts: Zoi.map() |> Zoi.default(%{}),
               error: Zoi.any() |> Zoi.nullish()
             },
             coerce: true

@@ -31,8 +31,10 @@ Initialize Hancho in a Git repository:
 ```
 
 This creates `.hancho/config.toml`, `.hancho/logs/`, `.hancho/prompts/`,
-`.hancho/workflows/`, and `.hancho/worktrees/`. It installs the first workflow
-at `.hancho/workflows/implement.yaml` and its editable agent prompt at
+`.hancho/workflows/`, and `.hancho/worktrees/`. Runtime files also include the
+factory lease at `.hancho/factory.lock` and Harness operation journals in
+`.hancho/harness/`. It installs the first workflow at
+`.hancho/workflows/implement.yaml` and its editable agent prompt at
 `.hancho/prompts/implement.md`. The complete `.hancho/` folder stays local and
 ignored by Git. Initialization does not replace an existing workflow or prompt.
 
@@ -60,7 +62,11 @@ max_files = 5
 compress = true
 ```
 
-Use `Hancho.Config.load/1` to read and validate the file. Use dot-delimited keys such as `Hancho.Config.get(config, "repo.path")` to read values. If the file does not exist, `load/1` returns a validated default configuration for the repository without writing a file.
+Use `Hancho.Config.load/1` to read and validate the file. Use dot-delimited keys
+such as `Hancho.Config.get(config, "repo.path")` to read values. The configured
+repository path must resolve to the repository that Hancho discovered. If the
+file does not exist, `load/1` returns a validated default configuration for the
+repository without writing a file.
 
 ## Implementation workflow
 
@@ -131,6 +137,14 @@ implementation worktree for inspection when cleanup has not started. Bedrock
 stores its cluster descriptor, coordinator, log, and storage-worker files in
 this repository-local folder. Before the command returns, Hancho closes
 Bedrock's five-second in-memory storage window and verifies a durability marker.
+Run, step, and queue records have explicit schema and transition versions.
+Hancho upgrades older records when it reads them.
+
+Hancho records an intent before each external effect and records a receipt
+after the effect completes. Effects include task claims, worktree changes,
+commits, landing, cleanup, task closure, and task synchronization. On recovery,
+Hancho reconciles an incomplete intent with Git, Beadwork, or the filesystem
+before it continues.
 
 Each run record also saves the exact loaded workflow YAML, its source path, and
 its SHA-256 value. The activity log writes `workflow.snapshot` and
@@ -154,8 +168,10 @@ without writing state, claiming work, creating a worktree, or calling an agent:
 ```
 
 The preview reports the branch, commit, clean status, retained worktree count,
-provider, and implementation and verification timeouts. A repository or
-worktree mismatch stops the preview before a live run can start.
+provider, and implementation and verification timeouts. It also compiles the
+workflow and checks action modules, parameters, references, prompt files,
+provider readiness, and required executables. A repository, worktree, or
+workflow error stops the preview before a live run can start.
 
 If `bw ready` returns fewer tasks than the requested count, Hancho derives ready
 tasks from `bw list --all`. A task is ready when it is open or in progress and
@@ -189,6 +205,10 @@ match the child workflow state. A mismatch stops the queue with a
 `filesystem_out_of_sync` error. Hancho does not delete worktrees, prune Git
 state, reset HEAD, or change branches to repair a mismatch.
 
+One Hancho factory can own a repository at a time. The factory lease has a
+heartbeat. A new process can reclaim a stale lease after the recorded owner
+process ends.
+
 ## Retry and resume
 
 Continue one stopped workflow from its stopped step:
@@ -198,8 +218,9 @@ Continue one stopped workflow from its stopped step:
 ```
 
 Hancho keeps completed step outputs and does not run completed steps again. It
-checks the saved main-branch commit and a retained worktree before it changes
-durable state. A mismatch stops the retry.
+can also recover a run that ended while a step was running. It checks the saved
+main-branch commit, retained worktree, and pending external effects before it
+changes durable state. A mismatch stops the retry.
 
 Continue one stopped queue from its stopped child:
 
@@ -207,11 +228,12 @@ Continue one stopped queue from its stopped child:
 ./hancho resume QUEUE_ID --verbose
 ```
 
-Hancho retries the stopped child with its original run ID. After that child
-completes, Hancho runs the pending children in their saved order. Completed
-children do not run again. Queue activity includes `queue.resumed` and
-`queue.item_retried` events. Workflow activity includes a
-`workflow.retry_started` event.
+Hancho retries the stopped child with its original run ID. If the queue stopped
+before that child created a run, Hancho starts the child with the saved run ID.
+After that child completes, Hancho runs the pending children in their saved
+order. Completed children do not run again. Queue activity includes
+`queue.resumed`, `queue.item_retried`, and `queue.item_restarted` events.
+Workflow activity includes a `workflow.retry_started` event.
 
 ## Run inspection
 
@@ -236,6 +258,10 @@ Verification writes complete merged standard output to a protected file in
 KiB and one `verify.completed` summary. It does not write one factory event for
 each test-runner output chunk. `hancho run inspect` reports the complete output
 path.
+
+Command results keep a bounded output tail in memory. They report total output
+bytes and whether the in-memory result was truncated. The full verification
+log remains available at the protected output path.
 
 ## Retained worktrees
 
@@ -266,7 +292,12 @@ all other diagnostic files.
 
 Hancho writes factory activity to `.hancho/logs/factory.jsonl` by default. These events contain command output, workflow changes, agent activity, and other factory work. They are separate from the normal diagnostic logs for the Hancho application.
 
-The default JSON Lines format writes one event on each line. Each event has a schema version, sequence number, UTC timestamp, level, event name, message, message encoding, and metadata. The text format also writes one escaped event on each line.
+The default JSON Lines format writes one event on each line. Each event has a
+schema version, sequence number, UTC timestamp, level, event name, message,
+message encoding, and metadata. A sequence sidecar keeps sequence numbers
+monotonic across writer restarts. The text format also writes one escaped event
+on each line. Audit write failures are reported, but they do not replace the
+factory operation result.
 
 The log options have these effects:
 

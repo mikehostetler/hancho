@@ -139,7 +139,15 @@ defmodule Hancho.Config do
     repo =
       Zoi.map(
         %{
-          "path" => Zoi.string() |> Zoi.min(1) |> Zoi.default(project.root)
+          "path" =>
+            Zoi.string()
+            |> Zoi.min(1)
+            |> Zoi.refine(fn path ->
+              if Path.expand(path, project.root) == project.root,
+                do: :ok,
+                else: {:error, "must match the discovered Git repository root"}
+            end)
+            |> Zoi.default(project.root)
         },
         unrecognized_keys: :error
       )

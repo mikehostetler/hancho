@@ -1,7 +1,7 @@
 defmodule Hancho.Workflow.Inspector do
   @moduledoc "Builds one read-only report from durable workflow state."
 
-  alias Hancho.Workflow.Store
+  alias Hancho.Workflow.{Artifacts, Store}
 
   @spec inspect(Hancho.Project.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def inspect(project, run_id, options \\ []) do
@@ -21,6 +21,8 @@ defmodule Hancho.Workflow.Inspector do
     with {:ok, run} <- store_api.fetch_run(store, run_id),
          {:ok, steps} <- store_api.list_steps(store, run_id),
          {:ok, outputs} <- Jason.decode(run["outputs_json"]) do
+      artifacts = Artifacts.from_steps(steps, outputs)
+
       {:ok,
        %{
          run_id: run["id"],
@@ -30,18 +32,19 @@ defmodule Hancho.Workflow.Inspector do
          started_at: run["started_at"],
          finished_at: run["finished_at"],
          duration_ms: duration(run["started_at"], run["finished_at"]),
-         provider: provider_result(outputs),
-         verification: verification_result(outputs),
-         commit: get_in(outputs, ["land", "commit"]) || get_in(outputs, ["commit", "commit"]),
-         retained_worktree: retained_worktree(outputs),
+         provider: provider_result(artifacts),
+         verification: verification_result(artifacts),
+         commit:
+           get_in(artifacts, ["landing", "commit"]) || get_in(artifacts, ["commit", "commit"]),
+         retained_worktree: retained_worktree(artifacts),
          failure: decode_optional(run["error_json"]),
          steps: Enum.map(steps, &step_report/1)
        }}
     end
   end
 
-  defp provider_result(outputs) do
-    case outputs["implement"] do
+  defp provider_result(artifacts) do
+    case artifacts["implementation"] do
       nil ->
         nil
 
@@ -50,8 +53,8 @@ defmodule Hancho.Workflow.Inspector do
     end
   end
 
-  defp verification_result(outputs) do
-    case outputs["verify"] do
+  defp verification_result(artifacts) do
+    case artifacts["verification"] do
       nil ->
         nil
 
@@ -71,8 +74,8 @@ defmodule Hancho.Workflow.Inspector do
     end
   end
 
-  defp retained_worktree(outputs) do
-    case {outputs["create_worktree"], outputs["remove_worktree"]} do
+  defp retained_worktree(artifacts) do
+    case {artifacts["worktree_created"], artifacts["worktree_removed"]} do
       {%{"worktree_path" => path}, nil} -> path
       _other -> nil
     end

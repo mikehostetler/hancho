@@ -38,6 +38,23 @@ defmodule Hancho.Workflow.QueueRecord do
   @spec new(map()) :: {:ok, t()} | {:error, term()}
   def new(attributes), do: Zoi.parse(@schema, attributes)
 
+  @spec upgrade(map()) :: map()
+  def upgrade(attributes) do
+    attributes
+    |> Map.put_new("record_version", @record_version)
+    |> Map.put_new("transition_version", 0)
+    |> Map.update(
+      "items",
+      [],
+      &Enum.map(&1, fn item -> Map.put_new(item, "phase", phase(item)) end)
+    )
+  end
+
+  defp phase(%{"status" => "completed"}), do: "completed"
+  defp phase(%{"status" => "stopped"}), do: "child_stopped"
+  defp phase(%{"status" => "running"}), do: "child_running"
+  defp phase(_item), do: "selected"
+
   @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = record) do
     record

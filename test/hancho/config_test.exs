@@ -25,14 +25,13 @@ defmodule Hancho.ConfigTest do
     assert Config.get(config, "logs.format") == :jsonl
   end
 
-  test "reads dotted TOML keys and normalizes a relative repository path" do
+  test "rejects a configured path outside the discovered repository" do
     project = temporary_project()
     write_config(project, "version = 1\nrepo.path = \"factory\"\n")
 
-    assert {:ok, config} = Config.load(project)
-    assert config.repo.path == Path.join(project.root, "factory")
-    assert Config.fetch(config, "repo.path") == {:ok, Path.join(project.root, "factory")}
-    assert Config.fetch!(config, "version") == 1
+    assert {:error, %Error{kind: :validation} = error} = Config.load(project)
+    assert error.message =~ "repo.path"
+    assert error.message =~ "discovered Git repository root"
   end
 
   test "applies field defaults to a partial file" do

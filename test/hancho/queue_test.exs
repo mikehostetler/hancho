@@ -73,9 +73,9 @@ defmodule Hancho.QueueTest do
       {:ok, summary(queue["expected_head"])}
     end
 
-    def after_run(_project, queue, outputs, _options) do
+    def after_run(_project, queue, artifacts, _options) do
       send(self(), {:reconciled, :after, queue["current_position"]})
-      {:ok, summary(get_in(outputs, ["land", "commit"]) || queue["expected_head"])}
+      {:ok, summary(get_in(artifacts, ["landing", "commit"]) || queue["expected_head"])}
     end
 
     defp summary(head), do: %{branch: "main", head: head, clean: true, worktrees: []}
@@ -138,6 +138,7 @@ defmodule Hancho.QueueTest do
         status: :completed,
         current_step: nil,
         outputs: %{"land" => %{"commit" => "head-#{issue_id}"}},
+        artifacts: %{"landing" => %{"commit" => "head-#{issue_id}"}},
         error: nil
       })
     end
@@ -171,6 +172,7 @@ defmodule Hancho.QueueTest do
         status: :completed,
         current_step: nil,
         outputs: %{"land" => %{"commit" => "head-task-2"}},
+        artifacts: %{"landing" => %{"commit" => "head-task-2"}},
         error: nil
       })
     end
@@ -609,16 +611,16 @@ defmodule Hancho.QueueTest do
 
     assert {:ok, :done} = Hancho.Git.create_worktree(root, path, initial.head)
 
-    outputs = %{
-      "create_worktree" => %{"worktree_path" => path, "baseline" => initial.head}
+    artifacts = %{
+      "worktree_created" => %{"worktree_path" => path, "baseline" => initial.head}
     }
 
-    assert {:ok, %{worktrees: [^path]}} = QueueReconciler.after_run(project, queue, outputs)
+    assert {:ok, %{worktrees: [^path]}} = QueueReconciler.after_run(project, queue, artifacts)
 
     File.rm_rf!(path)
 
     assert {:error, %{code: "filesystem_out_of_sync", field: "worktree_directories"}} =
-             QueueReconciler.after_run(project, queue, outputs)
+             QueueReconciler.after_run(project, queue, artifacts)
   end
 
   test "validates saved main and retained-worktree state before retry" do
@@ -631,16 +633,26 @@ defmodule Hancho.QueueTest do
     File.write!(Path.join(path, "feature.txt"), "retained work\n")
 
     outputs = %{
-      "preflight" => %{"baseline" => head, "branch" => "main"},
-      "create_worktree" => %{"baseline" => head, "worktree_path" => path}
+      "repository_guard" => %{"baseline" => head, "branch" => "main"},
+      "isolate" => %{"baseline" => head, "worktree_path" => path}
     }
 
-    assert {:ok, %{head: ^head}} = RunReconciler.retry(project, outputs)
+    {:ok, definition} =
+      Hancho.Workflow.Definition.new(%{
+        name: "retry",
+        version: 1,
+        steps: [
+          %{name: "repository_guard", action: "Hancho.Actions.Preflight", params: %{}},
+          %{name: "isolate", action: "Hancho.Actions.CreateWorktree", params: %{}}
+        ]
+      })
+
+    assert {:ok, %{head: ^head}} = RunReconciler.retry(project, outputs, definition: definition)
 
     File.write!(Path.join(repository, "unexpected.txt"), "changed\n")
 
     assert {:error, %{code: "filesystem_out_of_sync", field: "repository_status"}} =
-             RunReconciler.retry(project, outputs)
+             RunReconciler.retry(project, outputs, definition: definition)
   end
 
   test "stops reconciliation when the main repository becomes dirty" do

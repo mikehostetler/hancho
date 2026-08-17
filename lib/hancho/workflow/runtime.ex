@@ -4,7 +4,7 @@ defmodule Hancho.Workflow.Runtime do
   @behaviour :gen_statem
 
   alias Hancho.Log.Event
-  alias Hancho.Workflow.{Params, Result}
+  alias Hancho.Workflow.{Artifacts, Params, Result}
 
   @spec start_link(map()) :: :gen_statem.start_ret()
   def start_link(arguments), do: :gen_statem.start_link(__MODULE__, arguments, [])
@@ -22,6 +22,7 @@ defmodule Hancho.Workflow.Runtime do
         %{
           index: 0,
           outputs: %{},
+          artifacts: %{},
           caller: nil,
           registry: Hancho.Workflow.Registry,
           executor: Hancho.Workflow.Executor,
@@ -52,11 +53,12 @@ defmodule Hancho.Workflow.Runtime do
          true <- is_map(result) || {:error, "Action result must be a map."} do
       result = Event.normalize(result)
       outputs = Map.put(data.outputs, step.name, result)
+      artifacts = Artifacts.put(data.artifacts, step.action, result)
 
       with :ok <-
              data.store_api.complete_step(data.store, data.run_id, data.index, result, outputs) do
         audit(data, "Step completed: #{step.name}", "workflow.step_completed", step)
-        advance(%{data | outputs: outputs})
+        advance(%{data | outputs: outputs, artifacts: artifacts})
       else
         {:error, reason} -> stop(data, step, reason)
       end
@@ -126,6 +128,7 @@ defmodule Hancho.Workflow.Runtime do
         status: status,
         current_step: current_step,
         outputs: data.outputs,
+        artifacts: data.artifacts,
         error: error
       })
 
