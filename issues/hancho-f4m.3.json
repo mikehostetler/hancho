@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T14:25:02Z",
+  "description": "Publish periodic implementation progress with elapsed time, Harness run identity when available, and latest activity.",
+  "id": "hancho-f4m.3",
+  "labels": [],
+  "parent": "hancho-f4m",
+  "priority": 1,
+  "status": "open",
+  "title": "Add implementation progress events",
+  "type": "task",
+  "updated_at": "2026-08-17T14:25:02Z"
+}
