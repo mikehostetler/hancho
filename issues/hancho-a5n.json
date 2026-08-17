@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
   "created": "2026-08-17T01:47:57Z",
@@ -7,8 +7,8 @@
   "id": "hancho-a5n",
   "labels": [],
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "Add YAML action workflows with SQLite state",
   "type": "task",
-  "updated_at": "2026-08-17T01:47:57Z"
+  "updated_at": "2026-08-17T01:48:03Z"
 }
