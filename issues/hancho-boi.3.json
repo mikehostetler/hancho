@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T19:25:12Z",
+  "description": "Add an explicit in-place workspace action and workflow contract. Reconcile expected dirty main state after a stopped pre-commit run, keep branch and HEAD checks, and support retry without treating agent changes as corruption.",
+  "id": "hancho-boi.3",
+  "labels": [],
+  "parent": "hancho-boi",
+  "priority": 2,
+  "status": "open",
+  "title": "Support stopped in-place workflows",
+  "type": "task",
+  "updated_at": "2026-08-17T19:25:12Z"
+}
