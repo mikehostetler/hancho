@@ -6,9 +6,15 @@
   "description": "Add an explicit Beadwork-ready queue command that runs workflows serially in the foreground. Persist queue state in Bedrock, reconcile Git and Hancho worktree state at every boundary, stop on mismatch or child failure, and show verbose progress with matching audit log events.",
   "id": "hancho-z76",
   "labels": [],
+  "comments": [
+    {
+      "text": "Implemented deterministic foreground queues in commit 40d2201. Added explicit Beadwork-ready selection, serial child runs, Bedrock queue state, strict Git/filesystem reconciliation, verbose progress and audit events, CLI coverage, and escript verification. mix check passed with 78 tests and 78.87% coverage.",
+      "timestamp": "2026-08-17T12:35:49Z"
+    }
+  ],
   "priority": 1,
   "status": "in_progress",
   "title": "Add deterministic foreground workflow queues",
   "type": "task",
-  "updated_at": "2026-08-17T12:21:53Z"
+  "updated_at": "2026-08-17T12:35:49Z"
 }
