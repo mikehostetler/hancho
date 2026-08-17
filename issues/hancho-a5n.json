@@ -6,9 +6,15 @@
   "description": "Install jido_action, yaml_elixir, and exqlite. Add ordered named YAML workflow steps with explicit parameter references, a foreground :gen_statem runner, SQLite state at .hancho/hancho.sqlite3, and an implementation workflow for one Beadwork issue.",
   "id": "hancho-a5n",
   "labels": [],
+  "comments": [
+    {
+      "text": "Implemented a sequential YAML workflow engine with approved Jido.Action modules, explicit input/run/step references, a foreground :gen_statem runner, SQLite run and step state at .hancho/hancho.sqlite3, the implement workflow, CLI support, activity logs, and escript native-library extraction. Validation: 67 tests and mix check pass; escript SQLite smoke passes.",
+      "timestamp": "2026-08-17T02:09:50Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "Add YAML action workflows with SQLite state",
   "type": "task",
-  "updated_at": "2026-08-17T01:48:03Z"
+  "updated_at": "2026-08-17T02:09:50Z"
 }
