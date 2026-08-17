@@ -2,13 +2,14 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T12:14:51Z",
   "created": "2026-08-17T12:14:38Z",
   "description": "Embed the default workflow and prompt, render repository-local prompts, and store exact workflow and prompt snapshots for audit.",
   "id": "hancho-x23",
   "labels": [],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Add prompt and workflow snapshots",
   "type": "task",
-  "updated_at": "2026-08-17T12:14:42Z"
+  "updated_at": "2026-08-17T12:14:51Z"
 }
