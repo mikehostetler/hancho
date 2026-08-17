@@ -11,7 +11,7 @@ defmodule Hancho.Workflow.QueueReconciler do
          {:ok, head} <- git.head(working_dir: project.root),
          {:ok, worktrees} <- discover_worktrees(project, git),
          {:ok, summary} <-
-           check(project, status.branch, head, worktrees, git) do
+           check(project, status.branch, head, worktrees, git, :clean) do
       {:ok,
        Map.merge(summary, %{
          repository: project.root,
@@ -32,7 +32,8 @@ defmodule Hancho.Workflow.QueueReconciler do
       queue["expected_branch"],
       queue["expected_head"],
       queue_worktrees(queue),
-      git
+      git,
+      :clean
     )
   end
 
@@ -43,14 +44,36 @@ defmodule Hancho.Workflow.QueueReconciler do
     expected_head = get_in(artifacts, ["landing", "commit"]) || queue["expected_head"]
     expected_worktrees = queue_worktrees(queue) ++ run_worktrees(artifacts)
 
-    check(project, queue["expected_branch"], expected_head, expected_worktrees, git)
+    check(project, queue["expected_branch"], expected_head, expected_worktrees, git, :clean)
   end
 
-  defp check(project, expected_branch, expected_head, expected_worktrees, git) do
+  @spec after_stopped_run(Hancho.Project.t(), map(), map(), keyword()) ::
+          {:ok, map()} | {:error, map() | term()}
+  def after_stopped_run(project, queue, artifacts, options \\ []) do
+    git = Keyword.get(options, :git, Hancho.Git)
+    expected_head = get_in(artifacts, ["commit", "commit"]) || queue["expected_head"]
+    expected_worktrees = queue_worktrees(queue) ++ run_worktrees(artifacts)
+
+    with {:ok, mode} <- workspace_mode(project, artifacts) do
+      cleanliness =
+        if mode == :in_place and is_nil(artifacts["commit"]), do: :allow_dirty, else: :clean
+
+      check(
+        project,
+        queue["expected_branch"],
+        expected_head,
+        expected_worktrees,
+        git,
+        cleanliness
+      )
+    end
+  end
+
+  defp check(project, expected_branch, expected_head, expected_worktrees, git, cleanliness) do
     expected_paths = expected_worktrees |> Enum.map(& &1.path) |> Enum.sort()
 
     with {:ok, status} <- git.status(working_dir: project.root),
-         :ok <- clean(status, "repository_status"),
+         :ok <- repository_status(status, cleanliness),
          :ok <- equal("branch", expected_branch, status.branch),
          {:ok, head} <- git.head(working_dir: project.root),
          :ok <- equal("head", expected_head, head),
@@ -64,11 +87,24 @@ defmodule Hancho.Workflow.QueueReconciler do
        %{
          branch: status.branch,
          head: head,
-         clean: true,
+         clean: status.entries == [],
+         changed_paths: status.entries |> Enum.map(& &1.path) |> Enum.sort(),
          worktrees: expected_paths
        }}
     end
   end
+
+  defp workspace_mode(project, %{
+         "workspace_opened" => %{"mode" => "in_place", "workspace_path" => path}
+       }) do
+    if Path.expand(path) == Path.expand(project.root) do
+      {:ok, :in_place}
+    else
+      mismatch("workspace_path", Path.expand(project.root), Path.expand(path))
+    end
+  end
+
+  defp workspace_mode(_project, _artifacts), do: {:ok, :worktree}
 
   defp run_worktrees(artifacts) do
     created = artifacts["worktree_created"]
@@ -188,6 +224,9 @@ defmodule Hancho.Workflow.QueueReconciler do
 
   defp clean(%Git.Status{entries: []}, _field), do: :ok
   defp clean(%Git.Status{entries: entries}, field), do: mismatch(field, "clean", entries)
+
+  defp repository_status(_status, :allow_dirty), do: :ok
+  defp repository_status(status, :clean), do: clean(status, "repository_status")
 
   defp equal(_field, value, value), do: :ok
   defp equal(field, expected, actual), do: mismatch(field, expected, actual)

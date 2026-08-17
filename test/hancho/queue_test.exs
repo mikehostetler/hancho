@@ -105,6 +105,14 @@ defmodule Hancho.QueueTest do
         version: 1,
         steps: [
           %{
+            name: "workspace",
+            action: "Hancho.Actions.UseRepository",
+            params: %{
+              "repo_path" => "$input.repo_path",
+              "baseline" => "head-0"
+            }
+          },
+          %{
             name: "implement",
             action: "Hancho.Actions.Implement",
             params: %{
@@ -358,6 +366,7 @@ defmodule Hancho.QueueTest do
            }
 
     assert Enum.map(preview.compilation.steps, & &1.action) == [
+             "Hancho.Actions.UseRepository",
              "Hancho.Actions.Implement",
              "Hancho.Actions.Verify"
            ]
@@ -666,6 +675,37 @@ defmodule Hancho.QueueTest do
              QueueReconciler.after_run(project, queue, artifacts)
   end
 
+  test "accepts expected dirty state after a stopped in-place run" do
+    repository = temporary_repository()
+    project = Hancho.Project.new(repository)
+    assert {:ok, initial} = QueueReconciler.initial(project)
+
+    queue = %{
+      "expected_branch" => initial.branch,
+      "expected_head" => initial.head,
+      "expected_worktrees" => initial.expected_worktrees
+    }
+
+    artifacts = %{
+      "workspace_opened" => %{
+        "mode" => "in_place",
+        "workspace_path" => repository,
+        "baseline" => initial.head
+      }
+    }
+
+    File.write!(Path.join(repository, "agent-change.txt"), "retained work\n")
+
+    assert {:ok, summary} =
+             QueueReconciler.after_stopped_run(project, queue, artifacts)
+
+    refute summary.clean
+    assert summary.changed_paths == ["agent-change.txt"]
+
+    assert {:error, %{code: "filesystem_out_of_sync", field: "repository_status"}} =
+             QueueReconciler.after_run(project, queue, artifacts)
+  end
+
   test "validates saved main and retained-worktree state before retry" do
     repository = temporary_repository()
     project = Hancho.Project.new(repository)
@@ -696,6 +736,52 @@ defmodule Hancho.QueueTest do
 
     assert {:error, %{code: "filesystem_out_of_sync", field: "repository_status"}} =
              RunReconciler.retry(project, outputs, definition: definition)
+  end
+
+  test "allows a stopped in-place run to retry with retained changes" do
+    repository = temporary_repository()
+    project = Hancho.Project.new(repository)
+    {:ok, head} = Hancho.Git.head(working_dir: repository)
+
+    outputs = %{
+      "repository_guard" => %{"baseline" => head, "branch" => "main"},
+      "workspace" => %{
+        "mode" => "in_place",
+        "workspace_path" => repository,
+        "baseline" => head
+      }
+    }
+
+    {:ok, definition} =
+      Hancho.Workflow.Definition.new(%{
+        name: "retry-in-place",
+        version: 1,
+        steps: [
+          %{name: "repository_guard", action: "Hancho.Actions.Preflight", params: %{}},
+          %{name: "workspace", action: "Hancho.Actions.UseRepository", params: %{}}
+        ]
+      })
+
+    File.write!(Path.join(repository, "agent-change.txt"), "retained work\n")
+
+    assert {:ok, summary} = RunReconciler.retry(project, outputs, definition: definition)
+    refute summary.clean
+    assert summary.changed_paths == ["agent-change.txt"]
+
+    committed_outputs =
+      Map.put(outputs, "commit", %{"commit" => head, "issue_id" => "task-1"})
+
+    {:ok, committed_definition} =
+      Hancho.Workflow.Definition.new(%{
+        name: "retry-in-place-committed",
+        version: 1,
+        steps:
+          definition.steps ++
+            [%{name: "commit", action: "Hancho.Actions.Commit", params: %{}}]
+      })
+
+    assert {:error, %{code: "filesystem_out_of_sync", field: "repository_status"}} =
+             RunReconciler.retry(project, committed_outputs, definition: committed_definition)
   end
 
   test "stops reconciliation when the main repository becomes dirty" do

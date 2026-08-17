@@ -9,7 +9,8 @@ defmodule Hancho.Workflow.Compiler do
     registry = Keyword.get(options, :registry, Hancho.Workflow.Registry)
 
     with :ok <- validate_references(definition.steps, input),
-         {:ok, steps} <- compile_steps(project, definition.steps, registry, options) do
+         {:ok, steps} <- compile_steps(project, definition.steps, registry, options),
+         :ok <- validate_workspace_contract(definition.steps) do
       {:ok,
        %{
          workflow: definition.name,
@@ -19,6 +20,38 @@ defmodule Hancho.Workflow.Compiler do
          executables: collect(steps, :executable),
          prompt_files: collect(steps, :prompt_file)
        }}
+    end
+  end
+
+  defp validate_workspace_contract(steps) do
+    case Enum.find_index(steps, &(&1.action == "Hancho.Actions.Implement")) do
+      nil ->
+        :ok
+
+      implement_position ->
+        workspaces =
+          steps
+          |> Enum.with_index()
+          |> Enum.filter(fn {step, position} ->
+            position < implement_position and
+              step.action in [
+                "Hancho.Actions.CreateWorktree",
+                "Hancho.Actions.UseRepository"
+              ]
+          end)
+
+        case workspaces do
+          [{_step, _position}] ->
+            :ok
+
+          [] ->
+            implement = Enum.at(steps, implement_position)
+            {:error, {:workflow_compile_failed, implement.name, :workspace_not_declared}}
+
+          _multiple ->
+            implement = Enum.at(steps, implement_position)
+            {:error, {:workflow_compile_failed, implement.name, :multiple_workspaces_declared}}
+        end
     end
   end
 

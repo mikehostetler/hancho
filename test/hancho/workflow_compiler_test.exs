@@ -143,6 +143,34 @@ defmodule Hancho.WorkflowCompilerTest do
              Compiler.compile(project, prompt_workflow, %{})
   end
 
+  test "rejects an implementation workflow without an explicit workspace" do
+    project = project()
+
+    {:ok, workflow} =
+      Definition.new(%{
+        name: "unsafe-implement",
+        version: 1,
+        steps: [
+          %{
+            name: "implement",
+            action: "Hancho.Actions.Implement",
+            params: %{
+              prompt: "Do the work.",
+              worktree_path: project.root,
+              provider: "codex",
+              timeout_ms: 1_000
+            }
+          }
+        ]
+      })
+
+    assert {:error, {:workflow_compile_failed, "implement", :workspace_not_declared}} =
+             Compiler.compile(project, workflow, %{},
+               services: %{harness: ReadyHarness},
+               validate_environment: false
+             )
+  end
+
   defp project do
     path = Path.join(System.tmp_dir!(), "hancho-compiler-#{System.unique_integer([:positive])}")
     File.mkdir_p!(path)

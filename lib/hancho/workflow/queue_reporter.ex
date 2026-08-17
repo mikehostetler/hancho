@@ -33,11 +33,16 @@ defmodule Hancho.Workflow.QueueReporter do
           keyword()
         ) :: :ok
   def reconciliation(project, queue_id, boundary, position, item, summary, options) do
+    repository_state =
+      if summary.clean,
+        do: "clean",
+        else: "changed (#{length(Map.get(summary, :changed_paths, []))} paths)"
+
     emit(
       project,
       queue_id,
       "queue.reconciled",
-      "Reconciled #{boundary} item #{position + 1}: #{summary.branch} at #{summary.head}, clean, #{length(summary.worktrees)} worktrees.",
+      "Reconciled #{boundary} item #{position + 1}: #{summary.branch} at #{summary.head}, #{repository_state}, #{length(summary.worktrees)} worktrees.",
       Map.merge(item_metadata(item, position, nil), %{boundary: boundary, state: summary}),
       false,
       options

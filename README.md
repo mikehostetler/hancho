@@ -107,6 +107,29 @@ Workflow structure does not use `config.toml`. Edit the repository-local YAML
 file to change action parameters. Hancho permits only action modules in
 `Hancho.Workflow.Registry`; it does not create atoms from YAML module names.
 
+Every implementation workflow must declare one workspace before its
+`Hancho.Actions.Implement` step. The default workflow uses
+`Hancho.Actions.CreateWorktree`. An in-place workflow must use
+`Hancho.Actions.UseRepository` and pass its `workspace_path` to implementation,
+scope validation, verification, and commit actions:
+
+```yaml
+- name: use_repository
+  action: Hancho.Actions.UseRepository
+  params:
+    repo_path: "$steps.preflight.repo_path"
+    baseline: "$steps.preflight.baseline"
+- name: implement
+  action: Hancho.Actions.Implement
+  params:
+    worktree_path: "$steps.use_repository.workspace_path"
+```
+
+Hancho rejects an implementation workflow that does not declare exactly one
+workspace. If an in-place run stops before commit, Hancho keeps the main branch
+and HEAD checks but accepts the agent's dirty files for retry. A successful run
+must still leave a clean repository at its recorded commit.
+
 The `Hancho.Actions.RenderPrompt` action accepts exactly one prompt source. A
 file source is relative to `.hancho/prompts/`:
 

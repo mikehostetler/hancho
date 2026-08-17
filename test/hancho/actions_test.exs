@@ -233,6 +233,35 @@ defmodule Hancho.ActionsTest do
     assert result.harness_run_id == "harness-1"
   end
 
+  test "selects a clean repository as an explicit in-place workspace" do
+    repository = temporary_repository()
+    {:ok, baseline} = Hancho.Git.head(working_dir: repository)
+
+    assert {:ok, workspace} =
+             Jido.Exec.run(
+               Actions.UseRepository,
+               %{repo_path: repository, baseline: baseline},
+               %{services: %{git: Hancho.Git}}
+             )
+
+    assert workspace == %{
+             mode: "in_place",
+             workspace_path: repository,
+             baseline: baseline
+           }
+
+    File.write!(Path.join(repository, "unexpected.txt"), "dirty\n")
+
+    assert {:error, error} =
+             Jido.Exec.run(
+               Actions.UseRepository,
+               %{repo_path: repository, baseline: baseline},
+               %{services: %{git: Hancho.Git}}
+             )
+
+    assert Exception.message(error) =~ "in-place workspace has uncommitted changes"
+  end
+
   test "records normalized implementation progress without provider output" do
     repository = temporary_repository()
     project = Hancho.Project.new(repository)

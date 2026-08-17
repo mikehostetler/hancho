@@ -14,15 +14,24 @@ defmodule Hancho.Workflow.RunReconciler do
         QueueReconciler.initial(project, options)
 
       preflight ->
-        expected_head = get_in(artifacts, ["landing", "commit"]) || preflight["baseline"]
+        expected_head =
+          get_in(artifacts, ["landing", "commit"]) ||
+            get_in(artifacts, ["commit", "commit"]) || preflight["baseline"]
 
-        with {:ok, status} <- git.status(working_dir: project.root),
-             :ok <- equal("repository_status", [], status.entries),
+        with {:ok, mode} <- workspace_mode(project, artifacts),
+             {:ok, status} <- git.status(working_dir: project.root, untracked_files: :all),
+             :ok <- repository_status(status, mode, artifacts),
              :ok <- equal("branch", preflight["branch"], status.branch),
              {:ok, head} <- git.head(working_dir: project.root),
              :ok <- equal("head", expected_head, head),
              :ok <- check_worktree(project, artifacts, git) do
-          {:ok, %{branch: status.branch, head: head, clean: true}}
+          {:ok,
+           %{
+             branch: status.branch,
+             head: head,
+             clean: status.entries == [],
+             changed_paths: status.entries |> Enum.map(& &1.path) |> Enum.sort()
+           }}
         end
     end
   end
@@ -54,6 +63,23 @@ defmodule Hancho.Workflow.RunReconciler do
   end
 
   defp check_worktree(_project, _outputs, _git), do: :ok
+
+  defp workspace_mode(project, %{
+         "workspace_opened" => %{"mode" => "in_place", "workspace_path" => path}
+       }) do
+    with :ok <- equal("workspace_path", Path.expand(project.root), Path.expand(path)) do
+      {:ok, :in_place}
+    end
+  end
+
+  defp workspace_mode(_project, _artifacts), do: {:ok, :worktree}
+
+  defp repository_status(_status, :in_place, artifacts)
+       when not is_map_key(artifacts, "commit") and not is_map_key(artifacts, "landing"),
+       do: :ok
+
+  defp repository_status(status, _mode, _artifacts),
+    do: equal("repository_status", [], status.entries)
 
   defp committed_worktree_clean(%{"commit" => _commit}, status),
     do: equal("worktree_status", [], status.entries)

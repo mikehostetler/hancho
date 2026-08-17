@@ -380,7 +380,13 @@ defmodule Hancho.Workflow.QueueRunner do
 
     with {:ok, queue} <- store_api.fetch_queue(store, queue_id),
          {:ok, summary} <-
-           reconciler.after_run(project, queue, result.artifacts, reconcile_options(options)),
+           reconcile_stopped(
+             reconciler,
+             project,
+             queue,
+             result.artifacts,
+             reconcile_options(options)
+           ),
          :ok <-
            QueueReporter.reconciliation(
              project,
@@ -561,6 +567,14 @@ defmodule Hancho.Workflow.QueueRunner do
   defp recovery_event(:start), do: "queue.item_restarted"
   defp recovery_verb(:retry), do: "Retrying"
   defp recovery_verb(:start), do: "Restarting"
+
+  defp reconcile_stopped(reconciler, project, queue, artifacts, options) do
+    if function_exported?(reconciler, :after_stopped_run, 4) do
+      reconciler.after_stopped_run(project, queue, artifacts, options)
+    else
+      reconciler.after_run(project, queue, artifacts, options)
+    end
+  end
 
   defp validate_request(@source, count) when is_integer(count) and count > 0, do: :ok
 

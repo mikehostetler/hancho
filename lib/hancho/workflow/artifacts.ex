@@ -8,6 +8,7 @@ defmodule Hancho.Workflow.Artifacts do
     "Hancho.Actions.Commit" => "commit",
     "Hancho.Actions.Land" => "landing",
     "Hancho.Actions.CreateWorktree" => "worktree_created",
+    "Hancho.Actions.UseRepository" => "workspace_opened",
     "Hancho.Actions.RemoveWorktree" => "worktree_removed",
     "Hancho.Actions.CloseIssue" => "issue_closed"
   }
