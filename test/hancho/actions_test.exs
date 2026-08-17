@@ -97,6 +97,8 @@ defmodule Hancho.ActionsTest do
 
   defmodule VerboseHarness do
     def run_with_progress(:grok, _prompt, options, callback) do
+      :auto_approve = options[:approval_mode]
+      :workspace_write = options[:sandbox_mode]
       event_callback = options[:event_callback]
       true = is_function(event_callback, 1)
       500 = options[:event_poll_interval_ms]

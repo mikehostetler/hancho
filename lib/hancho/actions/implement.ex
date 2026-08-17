@@ -57,7 +57,7 @@ defmodule Hancho.Actions.Implement do
     options =
       [
         cwd: params.worktree_path,
-        approval_mode: :auto_edit,
+        approval_mode: approval_mode(provider),
         sandbox_mode: :workspace_write,
         runtime_timeout_ms: params.timeout_ms,
         idle_timeout_ms: min(params.idle_timeout_ms, params.timeout_ms),
@@ -76,6 +76,13 @@ defmodule Hancho.Actions.Implement do
       harness.run(provider, params.prompt, Keyword.delete(options, :progress_interval_ms))
     end
   end
+
+  # Grok's :auto_edit mode maps to acceptEdits, which can wait for interactive
+  # approval of shell and web tools. Hancho runs Grok without an approval
+  # responder, so use its non-interactive mode while the workspace sandbox
+  # continues to limit filesystem access.
+  defp approval_mode(:grok), do: :auto_approve
+  defp approval_mode(_provider), do: :auto_edit
 
   defp progress_callback(context) do
     fn progress ->
