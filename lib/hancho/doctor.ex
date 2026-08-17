@@ -8,6 +8,7 @@ defmodule Hancho.Doctor do
     project_api = Keyword.get(options, :project_api, Hancho.Project)
     git = Keyword.get(options, :git, Hancho.Git)
     beadwork = Keyword.get(options, :beadwork, Hancho.Beadwork)
+    config_api = Keyword.get(options, :config_api, Hancho.Config)
     harness = Keyword.get(options, :harness, Jido.Harness)
     start_harness = Keyword.get(options, :start_harness, &Hancho.Harness.ensure_started/0)
 
@@ -17,6 +18,7 @@ defmodule Hancho.Doctor do
     beadwork_executable = beadwork.executable()
     beadwork_version = beadwork_version(beadwork, cwd, beadwork_executable)
     beadwork_config = beadwork_config(beadwork, project_result, beadwork_executable)
+    config_result = config_result(config_api, project_result)
     harness_start = start_harness.()
 
     checks = [
@@ -25,6 +27,7 @@ defmodule Hancho.Doctor do
       branch_check(git_status),
       worktree_check(git_status),
       state_directory_check(project_result),
+      config_check(config_result),
       executable_check("beadwork", beadwork_executable),
       beadwork_version_check(beadwork_version),
       beadwork_repository_check(beadwork_config),
@@ -59,6 +62,9 @@ defmodule Hancho.Doctor do
   defp beadwork_config(_beadwork, {:error, _reason}, {:ok, _path}),
     do: {:error, :repository_unavailable}
 
+  defp config_result(config_api, {:ok, project}), do: config_api.load(project)
+  defp config_result(_config_api, {:error, _reason}), do: {:error, :repository_unavailable}
+
   defp executable_check(name, {:error, :not_found}),
     do: check(name, :fail, "Executable not found in PATH.")
 
@@ -92,6 +98,15 @@ defmodule Hancho.Doctor do
       check("state", :warning, "#{project.hancho_dir} does not exist.")
     end
   end
+
+  defp config_check({:ok, config}) do
+    check("config", :pass, "version #{config.version}, repo #{config.repo.path}")
+  end
+
+  defp config_check({:error, %Hancho.Config.Error{} = error}),
+    do: check("config", :fail, error.message)
+
+  defp config_check({:error, reason}), do: check("config", :fail, format_reason(reason))
 
   defp beadwork_version_check({:ok, version}),
     do: check("beadwork_version", :pass, version)

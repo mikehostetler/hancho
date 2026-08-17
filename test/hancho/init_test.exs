@@ -15,7 +15,9 @@ defmodule Hancho.InitTest do
     assert String.ends_with?(output, "/#{Path.basename(repository)}/.hancho\n")
 
     config = Path.join(repository, ".hancho/config.toml")
-    assert File.read!(config) == "version = 1\n"
+    assert {:ok, values} = config |> File.read!() |> TomlElixir.decode()
+    assert values["version"] == 1
+    assert Path.basename(values["repo"]["path"]) == Path.basename(repository)
     assert File.dir?(Path.join(repository, ".hancho/logs"))
     assert File.dir?(Path.join(repository, ".hancho/state"))
     assert File.read!(Path.join(repository, ".gitignore")) == "_build/\n/.hancho/\n"

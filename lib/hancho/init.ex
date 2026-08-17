@@ -1,7 +1,6 @@
 defmodule Hancho.Init do
   @moduledoc false
 
-  @config "version = 1\n"
   @ignore_rule "/.hancho/"
 
   def run(options \\ []) do
@@ -23,13 +22,20 @@ defmodule Hancho.Init do
     with :ok <- File.mkdir_p(project.logs_path),
          :ok <- File.mkdir_p(project.state_path),
          :ok <- File.chmod(project.hancho_dir, 0o700),
-         :ok <- write_initial_config(project.config_path) do
+         :ok <- write_initial_config(project) do
       :ok
     end
   end
 
-  defp write_initial_config(path) do
-    if File.exists?(path), do: :ok, else: File.write(path, @config)
+  defp write_initial_config(project) do
+    if File.exists?(project.config_path) do
+      :ok
+    else
+      with {:ok, config} <- Hancho.Config.default(project),
+           {:ok, contents} <- Hancho.Config.encode(config) do
+        File.write(project.config_path, contents)
+      end
+    end
   end
 
   defp ensure_gitignore(repository) do

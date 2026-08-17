@@ -57,6 +57,7 @@ defmodule HanchoTest do
       end)
 
     assert output =~ "PASS repository: /repo"
+    assert output =~ "PASS config: version 1, repo /repo"
     assert output =~ "PASS beadwork_version: bw 0.13.2"
     assert output =~ "PASS beadwork_repository: prefix=hancho, version=2"
     assert output =~ "PASS jido_harness: version 2.0.0"

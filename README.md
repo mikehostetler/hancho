@@ -19,6 +19,17 @@ Initialize Hancho in a Git repository:
 
 This creates `.hancho/config.toml`, `.hancho/logs/`, and `.hancho/state/`. The complete `.hancho/` folder stays local and ignored by Git.
 
+The initial configuration is:
+
+```toml
+version = 1
+
+[repo]
+path = "/path/to/repository"
+```
+
+Use `Hancho.Config.load/1` to read and validate the file. Use dot-delimited keys such as `Hancho.Config.get(config, "repo.path")` to read values. If the file does not exist, `load/1` returns a validated default configuration for the repository without writing a file.
+
 Inspect the current repository and required local tools:
 
 ```sh

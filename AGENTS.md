@@ -11,6 +11,7 @@
 - Use `jason` for JSON.
 - Use `toml_elixir` to read TOML configuration files.
 - Use `zoi` to validate configuration data.
+- Read repository configuration through `Hancho.Config` and use dot-delimited keys.
 - Use the OTP `:gen_statem` behavior for workflow state management.
 - Use `erlexec` for operating-system process management.
 - Use the `git` package through `Hancho.Git` for Git commands. Run Git processes through erlexec.
