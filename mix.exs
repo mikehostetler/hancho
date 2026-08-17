@@ -6,6 +6,7 @@ defmodule Hancho.MixProject do
       app: :hancho,
       version: "0.1.0",
       elixir: "~> 1.20",
+      elixirc_paths: elixirc_paths(Mix.env()),
       escript: [main_module: Hancho.CLI, app: nil, include_priv_for: [:erlexec]],
       aliases: aliases(),
       test_coverage: [summary: [threshold: 65]],
@@ -36,6 +37,9 @@ defmodule Hancho.MixProject do
       {:zoi, "~> 0.18.7"}
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_environment), do: ["lib"]
 
   defp aliases do
     [

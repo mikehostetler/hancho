@@ -17,6 +17,13 @@ Run all unit, integration, compile, formatting, and escript checks with:
 mix check
 ```
 
+The integration suite uses a Hancho-local `Jido.Harness` adapter. The adapter
+does not call a live coding provider. It produces fixed events and makes a
+fixed file change. This keeps the full workflow, run manager, event journal,
+Git, worktree, and Bedrock test deterministic. Tests that call a live provider
+must be separate and explicit because they need credentials and can have a
+cost.
+
 Initialize Hancho in a Git repository:
 
 ```sh
