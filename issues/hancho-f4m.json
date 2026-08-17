@@ -2,13 +2,14 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T14:53:13Z",
   "created": "2026-08-17T14:24:52Z",
   "description": "Implement retry and resume, read-only dry-run reconciliation, agent progress, compact verification logs, retained-worktree management, allowed-scope validation, and run inspection after the llmux Grok burn-in.",
   "id": "hancho-f4m",
   "labels": [],
   "priority": 1,
-  "status": "open",
+  "status": "closed",
   "title": "Harden Hancho live-run operations",
   "type": "epic",
-  "updated_at": "2026-08-17T14:24:52Z"
+  "updated_at": "2026-08-17T14:53:13Z"
 }
