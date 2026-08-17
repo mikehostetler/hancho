@@ -77,10 +77,12 @@ repository without writing a file.
 Run the first factory workflow for one ready Beadwork task:
 
 ```sh
-./hancho run implement hancho-123
+./hancho run implement hancho-123 --verbose
 ```
 
-This command stays in the foreground. The workflow does these steps in order:
+This command stays in the foreground. `--verbose` also streams safe summaries
+of normalized provider events while the coding agent works. The workflow does
+these steps in order:
 
 1. Check the Git repository and Beadwork task.
 2. Claim the task.
@@ -193,7 +195,11 @@ prompt, step, and log snapshots.
 The command stays in the foreground and stops on the first failed child. It
 does not retry, skip, repair, or continue. `--verbose` prints queue selection,
 the checks before and after each child, child run IDs, landed commits, and the
-terminal queue result. Hancho also saves these events in the factory log:
+terminal queue result. During implementation it also prints normalized provider
+text, thought, tool, file, plan, usage, approval, and terminal updates. Tool
+results are summarized; Hancho does not print their full payloads to the
+console. Normal mode keeps the short periodic implementation progress lines.
+Hancho also saves queue events in the factory log:
 
 - `queue.started`
 - `queue.reconciled`

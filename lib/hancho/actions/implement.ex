@@ -15,6 +15,7 @@ defmodule Hancho.Actions.Implement do
       })
 
   alias Hancho.Actions.Context
+  alias Hancho.Harness.EventConsole
 
   @providers %{
     "amp" => :amp,
@@ -33,8 +34,8 @@ defmodule Hancho.Actions.Implement do
     harness = Context.service(context, :harness, Hancho.Harness)
 
     with {:ok, provider} <- fetch_provider(params.provider),
-         {:ok, prior_run_id} <- prior_harness_run(context),
-         {:ok, result} <- run_harness(harness, provider, params, prior_run_id, context),
+         {:ok, prior_run} <- prior_harness_run(context),
+         {:ok, result} <- run_harness(harness, provider, params, prior_run, context),
          :ok <- completed(result) do
       {:ok,
        %{
@@ -50,21 +51,24 @@ defmodule Hancho.Actions.Implement do
   @spec provider(String.t()) :: {:ok, atom()} | {:error, String.t()}
   def provider(name), do: fetch_provider(name)
 
-  defp run_harness(harness, provider, params, prior_run_id, context) do
+  defp run_harness(harness, provider, params, prior_run, context) do
     repository = repository_from_worktree(params.worktree_path)
 
-    options = [
-      cwd: params.worktree_path,
-      approval_mode: :auto_edit,
-      sandbox_mode: :workspace_write,
-      runtime_timeout_ms: params.timeout_ms,
-      idle_timeout_ms: min(params.idle_timeout_ms, params.timeout_ms),
-      await_timeout: params.timeout_ms + 60_000,
-      cancellation_timeout_ms: 30_000,
-      progress_interval_ms: params.progress_interval_ms,
-      journal_dir: Path.join([repository, ".hancho", "harness"]),
-      resume_run_id: prior_run_id
-    ]
+    options =
+      [
+        cwd: params.worktree_path,
+        approval_mode: :auto_edit,
+        sandbox_mode: :workspace_write,
+        runtime_timeout_ms: params.timeout_ms,
+        idle_timeout_ms: min(params.idle_timeout_ms, params.timeout_ms),
+        await_timeout: params.timeout_ms + 60_000,
+        cancellation_timeout_ms: 30_000,
+        progress_interval_ms: params.progress_interval_ms,
+        journal_dir: Path.join([repository, ".hancho", "harness"]),
+        resume_run_id: prior_run_id(prior_run),
+        resume_cursor: prior_cursor(prior_run)
+      ]
+      |> verbose_event_options(context)
 
     if Code.ensure_loaded?(harness) and function_exported?(harness, :run_with_progress, 4) do
       harness.run_with_progress(provider, params.prompt, options, progress_callback(context))
@@ -92,9 +96,18 @@ defmodule Hancho.Actions.Implement do
       %{api: api, store: store, run_id: run_id, step_position: position} ->
         if function_exported?(api, :fetch_step_operation, 4) do
           case api.fetch_step_operation(store, run_id, position, "jido_harness.run") do
-            {:ok, nil} -> {:ok, nil}
-            {:ok, %{"id" => harness_run_id}} -> {:ok, harness_run_id}
-            {:error, reason} -> {:error, {:harness_operation_unavailable, reason}}
+            {:ok, nil} ->
+              {:ok, nil}
+
+            {:ok, %{"id" => harness_run_id} = operation} ->
+              {:ok,
+               %{
+                 id: harness_run_id,
+                 cursor: get_in(operation, ["metadata", "last_sequence"]) || 0
+               }}
+
+            {:error, reason} ->
+              {:error, {:harness_operation_unavailable, reason}}
           end
         else
           {:ok, nil}
@@ -128,6 +141,20 @@ defmodule Hancho.Actions.Implement do
   end
 
   defp persist_harness_run(_context, _progress), do: :ok
+
+  defp verbose_event_options(options, %{verbose: true}) do
+    Keyword.merge(options,
+      event_callback: &EventConsole.write/1,
+      event_poll_interval_ms: 500
+    )
+  end
+
+  defp verbose_event_options(options, _context), do: options
+
+  defp prior_run_id(%{id: id}), do: id
+  defp prior_run_id(_prior_run), do: nil
+  defp prior_cursor(%{cursor: cursor}) when is_integer(cursor) and cursor >= 0, do: cursor
+  defp prior_cursor(_prior_run), do: 0
 
   defp repository_from_worktree(path) do
     parts = path |> Path.expand() |> Path.split()

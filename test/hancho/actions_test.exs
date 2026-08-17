@@ -63,6 +63,7 @@ defmodule Hancho.ActionsTest do
   defmodule ProgressHarness do
     def run_with_progress(:codex, _prompt, options, callback) do
       25 = options[:progress_interval_ms]
+      nil = options[:event_callback]
 
       :ok =
         callback.(%{
@@ -91,6 +92,67 @@ defmodule Hancho.ActionsTest do
          status: :completed,
          text: "implemented"
        })}
+    end
+  end
+
+  defmodule VerboseHarness do
+    def run_with_progress(:grok, _prompt, options, callback) do
+      event_callback = options[:event_callback]
+      true = is_function(event_callback, 1)
+      500 = options[:event_poll_interval_ms]
+
+      :ok =
+        event_callback.([
+          event(:thinking_delta, %{"text" => "Inspect the"}, 1),
+          event(:thinking_delta, %{"text" => " task.\n"}, 2),
+          event(:output_text_delta, %{"text" => "I will update the fixture.\n"}, 3),
+          event(
+            :tool_call,
+            %{
+              "name" => "run_terminal_command",
+              "call_id" => "call-123456789012345",
+              "input" => %{"description" => "Run focused tests", "command" => "secret-command"}
+            },
+            4
+          ),
+          event(
+            :tool_result,
+            %{
+              "call_id" => "call-123456789012345",
+              "is_error" => false,
+              "output" => "secret tool output"
+            },
+            5
+          ),
+          event(:usage, %{"total_tokens" => 1_234}, 6)
+        ])
+
+      :ok =
+        callback.(%{
+          harness_run_id: "harness-verbose",
+          provider: :grok,
+          phase: :completed,
+          elapsed_ms: 50,
+          event_count: 7,
+          last_event: :run_completed
+        })
+
+      {:ok,
+       Jido.Harness.RunResult.new!(%{
+         run_id: "harness-verbose",
+         provider: :grok,
+         status: :completed,
+         text: "implemented"
+       })}
+    end
+
+    defp event(type, payload, sequence) do
+      Jido.Harness.Event.new!(
+        type: type,
+        provider: :grok,
+        sequence: sequence,
+        payload: payload
+      )
     end
   end
 
@@ -203,6 +265,34 @@ defmodule Hancho.ActionsTest do
     assert Enum.map(events, & &1["metadata"]["phase"]) == ["started", "completed"]
     assert List.last(events)["metadata"]["last_event"] == "run_completed"
     refute Enum.any?(events, &Map.has_key?(&1["metadata"], "text"))
+  end
+
+  test "prints safe normalized provider events in verbose mode" do
+    output =
+      ExUnit.CaptureIO.capture_io(fn ->
+        assert {:ok, result} =
+                 Jido.Exec.run(
+                   Actions.Implement,
+                   %{
+                     prompt: "Implement hancho-123",
+                     worktree_path: "/repo",
+                     provider: "grok",
+                     timeout_ms: 1_000,
+                     progress_interval_ms: 25
+                   },
+                   %{services: %{harness: VerboseHarness}, log: :disabled, verbose: true}
+                 )
+
+        assert result.harness_run_id == "harness-verbose"
+      end)
+
+    assert output =~ "[grok:thought] Inspect the task."
+    assert output =~ "[grok] I will update the fixture."
+    assert output =~ "[grok:tool] run_terminal_command — Run focused tests"
+    assert output =~ "[grok:tool] completed"
+    assert output =~ "[grok:usage] 1234 total tokens"
+    refute output =~ "secret-command"
+    refute output =~ "secret tool output"
   end
 
   test "renders inline and repository-local prompt snapshots" do

@@ -7,7 +7,7 @@ defmodule Hancho.CLI do
   Usage:
     hancho init       Initialize Hancho in the current repository
     hancho doctor     Inspect the repository and local tools
-    hancho run WORKFLOW ISSUE_ID
+    hancho run WORKFLOW ISSUE_ID [--verbose]
                       Run one Beadwork workflow in the foreground
     hancho run inspect RUN_ID
                       Inspect durable workflow and step state
@@ -100,10 +100,12 @@ defmodule Hancho.CLI do
     end
   end
 
-  defp dispatch_command(["run", workflow, issue_id], [], options) do
+  defp dispatch_command(["run", workflow, issue_id], parsed, options)
+       when parsed == [] or parsed == [verbose: true] do
     project_api = Keyword.get(options, :project_api, Hancho.Project)
     runner = Keyword.get(options, :workflow_runner, Hancho.Workflow.Runner)
     cwd = Keyword.get(options, :cwd, File.cwd!())
+    run_options = Keyword.put(options, :verbose, parsed[:verbose] || false)
 
     with {:ok, project} <- project_api.discover(cwd: cwd),
          {:ok, result} <-
@@ -111,7 +113,7 @@ defmodule Hancho.CLI do
              project,
              workflow,
              %{"repo_path" => project.root, "issue_id" => issue_id},
-             options
+             run_options
            ) do
       print_workflow_result(result)
     else

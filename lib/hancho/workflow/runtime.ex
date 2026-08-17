@@ -28,6 +28,7 @@ defmodule Hancho.Workflow.Runtime do
           executor: Hancho.Workflow.Executor,
           store_api: Hancho.Workflow.Store,
           log: :disabled,
+          verbose: false,
           services: %{}
         },
         arguments
@@ -140,6 +141,7 @@ defmodule Hancho.Workflow.Runtime do
       run_id: data.run_id,
       step: step.name,
       log: data.log,
+      verbose: data.verbose,
       artifacts: data.artifacts,
       services: data.services,
       effect_store: %{

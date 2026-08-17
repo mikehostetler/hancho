@@ -2,6 +2,7 @@ defmodule Hancho.Harness do
   @moduledoc false
 
   @default_progress_interval_ms 30_000
+  @default_event_poll_interval_ms 500
   @default_cancellation_timeout_ms 30_000
 
   def ensure_started do
@@ -31,7 +32,12 @@ defmodule Hancho.Harness do
       Keyword.get(options, :cancellation_timeout_ms, @default_cancellation_timeout_ms)
 
     resume_run_id = Keyword.get(options, :resume_run_id)
+    resume_cursor = Keyword.get(options, :resume_cursor, 0)
     journal_dir = Keyword.get(options, :journal_dir)
+    event_callback = Keyword.get(options, :event_callback)
+
+    event_poll_interval =
+      Keyword.get(options, :event_poll_interval_ms, @default_event_poll_interval_ms)
 
     run_options =
       Keyword.drop(options, [
@@ -39,7 +45,10 @@ defmodule Hancho.Harness do
         :progress_interval_ms,
         :cancellation_timeout_ms,
         :resume_run_id,
-        :journal_dir
+        :resume_cursor,
+        :journal_dir,
+        :event_callback,
+        :event_poll_interval_ms
       ])
 
     with :ok <- configure_journal(provider, journal_dir),
@@ -47,7 +56,17 @@ defmodule Hancho.Harness do
          {:ok, run_id, phase} <- start_or_attach(provider, prompt, run_options, resume_run_id) do
       result =
         with :ok <- notify(callback, progress(run_id, provider, phase, 0, 0, nil)),
-             {:ok, result} <- await(run_id, provider, await_timeout, interval, callback) do
+             {:ok, result} <-
+               await(
+                 run_id,
+                 provider,
+                 await_timeout,
+                 interval,
+                 resume_cursor,
+                 callback,
+                 event_callback,
+                 event_poll_interval
+               ) do
           {:ok, result}
         end
 
@@ -90,10 +109,35 @@ defmodule Hancho.Harness do
     end
   end
 
-  defp await(run_id, provider, timeout, interval, callback) do
+  defp await(
+         run_id,
+         provider,
+         timeout,
+         interval,
+         cursor,
+         callback,
+         event_callback,
+         event_poll_interval
+       ) do
     started_at = System.monotonic_time(:millisecond)
     deadline = deadline(started_at, timeout)
-    await_next(run_id, provider, started_at, deadline, interval, 0, nil, callback)
+
+    poll_interval =
+      if is_function(event_callback, 1), do: min(event_poll_interval, interval), else: interval
+
+    await_next(
+      run_id,
+      provider,
+      started_at,
+      deadline,
+      interval,
+      poll_interval,
+      started_at + interval,
+      cursor,
+      nil,
+      callback,
+      event_callback
+    )
   end
 
   defp await_next(
@@ -101,18 +145,22 @@ defmodule Hancho.Harness do
          provider,
          started_at,
          deadline,
-         interval,
+         progress_interval,
+         poll_interval,
+         next_progress_at,
          cursor,
          latest,
-         callback
+         callback,
+         event_callback
        ) do
-    wait = wait_time(deadline, interval)
+    wait = wait_time(deadline, poll_interval)
 
     case Jido.Harness.Run.await(run_id, wait) do
       {:ok, result} ->
-        {next_cursor, latest} = replay(run_id, cursor, latest)
+        {next_cursor, latest, events} = replay(run_id, cursor, latest)
 
-        with :ok <-
+        with :ok <- notify_events(event_callback, events),
+             :ok <-
                notify(
                  callback,
                  progress(run_id, provider, :completed, elapsed(started_at), next_cursor, latest)
@@ -124,22 +172,33 @@ defmodule Hancho.Harness do
         if expired?(deadline) do
           {:error, :timeout}
         else
-          {next_cursor, latest} = replay(run_id, cursor, latest)
+          {next_cursor, latest, events} = replay(run_id, cursor, latest)
+          now = now()
 
-          with :ok <-
-                 notify(
+          with :ok <- notify_events(event_callback, events),
+               :ok <-
+                 maybe_notify_progress(
                    callback,
-                   progress(run_id, provider, :running, elapsed(started_at), next_cursor, latest)
+                   now,
+                   next_progress_at,
+                   run_id,
+                   provider,
+                   started_at,
+                   next_cursor,
+                   latest
                  ) do
             await_next(
               run_id,
               provider,
               started_at,
               deadline,
-              interval,
+              progress_interval,
+              poll_interval,
+              next_progress_at(now, next_progress_at, progress_interval),
               next_cursor,
               latest,
-              callback
+              callback,
+              event_callback
             )
           end
         end
@@ -191,11 +250,33 @@ defmodule Hancho.Harness do
 
   defp replay(run_id, cursor, latest) do
     case Jido.Harness.Run.replay(run_id, cursor: cursor, limit: 10_000) do
-      {:ok, []} -> {cursor, latest}
-      {:ok, events} -> {List.last(events).sequence, List.last(events)}
-      {:error, _reason} -> {cursor, latest}
+      {:ok, []} -> {cursor, latest, []}
+      {:ok, events} -> {List.last(events).sequence, List.last(events), events}
+      {:error, _reason} -> {cursor, latest, []}
     end
   end
+
+  defp maybe_notify_progress(
+         callback,
+         now,
+         next_progress_at,
+         run_id,
+         provider,
+         started_at,
+         cursor,
+         latest
+       ) do
+    if now >= next_progress_at do
+      notify(callback, progress(run_id, provider, :running, elapsed(started_at), cursor, latest))
+    else
+      :ok
+    end
+  end
+
+  defp next_progress_at(now, next_progress_at, interval) when now >= next_progress_at,
+    do: now + interval
+
+  defp next_progress_at(_now, next_progress_at, _interval), do: next_progress_at
 
   defp progress(run_id, provider, phase, elapsed_ms, event_count, latest) do
     %{
@@ -222,6 +303,18 @@ defmodule Hancho.Harness do
     end
   rescue
     error -> {:error, {:progress_callback_failed, {:exception, error}}}
+  end
+
+  defp notify_events(nil, _events), do: :ok
+
+  defp notify_events(callback, events) when is_function(callback, 1) do
+    case callback.(events) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:event_callback_failed, reason}}
+      other -> {:error, {:invalid_event_callback_return, other}}
+    end
+  rescue
+    error -> {:error, {:event_callback_failed, {:exception, error}}}
   end
 
   defp deadline(_started_at, :infinity), do: :infinity

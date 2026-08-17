@@ -53,6 +53,15 @@ defmodule Hancho.WorkflowTest do
     def run(:second, %{"value" => value}, _context), do: {:ok, %{value: value * 2}}
   end
 
+  defmodule ContextExecutor do
+    def run(:first, %{"value" => value}, context) do
+      send(context.services.test_pid, {:action_verbose, context.verbose})
+      {:ok, %{value: value + 1}}
+    end
+
+    def run(:second, %{"value" => value}, _context), do: {:ok, %{value: value * 2}}
+  end
+
   defmodule MissingOutputExecutor do
     def run(:first, %{"value" => value}, _context), do: {:ok, %{other: value}}
   end
@@ -189,6 +198,23 @@ defmodule Hancho.WorkflowTest do
     assert {:ok, steps} = Store.list_steps(store, "run-success")
     assert Enum.map(steps, & &1["status"]) == ["completed", "completed"]
     Store.close(store)
+  end
+
+  test "passes verbose mode to workflow actions" do
+    {project, _workflow_path} = project_with_workflow(successful_workflow())
+
+    assert {:ok, %{status: :completed}} =
+             Runner.run(project, "test", %{"number" => 3},
+               run_id: "run-verbose",
+               registry: Registry,
+               executor: ContextExecutor,
+               services: %{test_pid: self()},
+               verbose: true,
+               log: :disabled,
+               flush_state: false
+             )
+
+    assert_received {:action_verbose, true}
   end
 
   test "stops on a missing parameter and keeps the Andon state in Bedrock" do

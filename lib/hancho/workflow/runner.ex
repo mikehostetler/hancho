@@ -71,6 +71,7 @@ defmodule Hancho.Workflow.Runner do
                  registry: Keyword.get(options, :registry, Hancho.Workflow.Registry),
                  executor: Keyword.get(options, :executor, Hancho.Workflow.Executor),
                  services: Keyword.get(options, :services, %{}),
+                 verbose: Keyword.get(options, :verbose, false),
                  log: log
                }) do
           {:ok, Runtime.run(pid)}
@@ -118,6 +119,7 @@ defmodule Hancho.Workflow.Runner do
                  registry: Keyword.get(options, :registry, Hancho.Workflow.Registry),
                  executor: Keyword.get(options, :executor, Hancho.Workflow.Executor),
                  services: Keyword.get(options, :services, %{}),
+                 verbose: Keyword.get(options, :verbose, false),
                  log: log,
                  index: position,
                  outputs: outputs,

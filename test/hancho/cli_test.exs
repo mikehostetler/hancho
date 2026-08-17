@@ -8,8 +8,8 @@ defmodule Hancho.CLITest do
   end
 
   defmodule WorkflowRunner do
-    def run(project, "implement", input, _options) do
-      send(self(), {:workflow_input, project, input})
+    def run(project, "implement", input, options) do
+      send(self(), {:workflow_input, project, input, options[:verbose]})
 
       Hancho.Workflow.Result.new(%{
         run_id: "run-123",
@@ -208,9 +208,25 @@ defmodule Hancho.CLITest do
     assert output == "Workflow implement completed. Run: run-123\n"
 
     assert_received {:workflow_input, project,
-                     %{"repo_path" => "/repo", "issue_id" => "hancho-123"}}
+                     %{"repo_path" => "/repo", "issue_id" => "hancho-123"}, false}
 
     assert project.bedrock_path == "/repo/.hancho/bedrock"
+  end
+
+  test "runs one workflow with verbose provider output enabled" do
+    output =
+      capture_io(fn ->
+        assert Hancho.CLI.run(["run", "implement", "hancho-123", "--verbose"],
+                 cwd: "/repo",
+                 project_api: ProjectAPI,
+                 workflow_runner: WorkflowRunner
+               ) == 0
+      end)
+
+    assert output == "Workflow implement completed. Run: run-123\n"
+
+    assert_received {:workflow_input, _project,
+                     %{"repo_path" => "/repo", "issue_id" => "hancho-123"}, true}
   end
 
   test "inspects durable workflow state" do

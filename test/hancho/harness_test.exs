@@ -90,6 +90,11 @@ defmodule Hancho.HarnessTest do
                  sandbox_mode: :workspace_write,
                  await_timeout: 1_000,
                  progress_interval_ms: 5,
+                 event_poll_interval_ms: 5,
+                 event_callback: fn events ->
+                   send(test_pid, {:events, events})
+                   :ok
+                 end,
                  journal_dir: Path.join(directory, "journals")
                ],
                fn progress ->
@@ -109,6 +114,9 @@ defmodule Hancho.HarnessTest do
 
     assert result.run_id == run_id
     assert result.status == :completed
+
+    assert_received {:events, events}
+    assert Enum.any?(events, &(&1.type == :run_completed))
 
     assert {:ok, info} = Jido.Harness.Run.info(run_id)
     assert String.starts_with?(info.journal_dir, Path.join(directory, "journals"))
