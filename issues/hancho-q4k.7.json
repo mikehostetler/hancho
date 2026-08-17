@@ -4,14 +4,16 @@
     "hancho-q4k.6"
   ],
   "blocks": [],
+  "closed_at": "2026-08-17T17:01:16Z",
+  "close_reason": "Added adversarial recovery tests, fixed lease heartbeat ownership, and enforced separate subprocess and production escript gates.",
   "created": "2026-08-17T15:51:19Z",
   "description": "Add crash-window, stale lease, resume phase, timeout cancellation, large output, audit failure, concurrency, and cross-process tests. Make mix check run subprocess tests and smoke-test a production escript without test modules. Update documentation.",
   "id": "hancho-q4k.7",
   "labels": [],
   "parent": "hancho-q4k",
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Add adversarial recovery and release checks",
   "type": "task",
-  "updated_at": "2026-08-17T16:45:08Z"
+  "updated_at": "2026-08-17T17:01:16Z"
 }
