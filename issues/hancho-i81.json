@@ -3,12 +3,12 @@
   "blocked_by": [],
   "blocks": [],
   "created": "2026-08-17T02:14:09Z",
-  "description": "Remove Exqlite and its escript NIF extraction. Execute SQLite directly through the sqlite3 CLI under Hancho.Command, keep .hancho/hancho.sqlite3 and the Workflow.Store API, add doctor and escript validation.",
+  "description": "Remove Exqlite, sqlite3 integration, and native SQLite packaging. Add bedrock from its GitHub repository and persist workflow run and step state in a repository-local Bedrock cluster under .hancho.",
   "id": "hancho-i81",
   "labels": [],
   "priority": 2,
   "status": "in_progress",
-  "title": "Replace Exqlite with sqlite3 CLI",
+  "title": "Replace SQLite with Bedrock state storage",
   "type": "task",
-  "updated_at": "2026-08-17T02:14:12Z"
+  "updated_at": "2026-08-17T02:18:14Z"
 }
