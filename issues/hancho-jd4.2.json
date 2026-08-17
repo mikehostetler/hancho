@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T00:09:34Z",
+  "description": "Add a synchronous activity log API using OTP logger_std_h for filtering, file output, synchronization, console routing, and rotation.",
+  "id": "hancho-jd4.2",
+  "labels": [],
+  "parent": "hancho-jd4",
+  "priority": 1,
+  "status": "open",
+  "title": "Add Logger-backed activity writer",
+  "type": "task",
+  "updated_at": "2026-08-17T00:09:34Z"
+}
