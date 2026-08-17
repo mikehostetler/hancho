@@ -231,6 +231,12 @@ count, and latest normalized event type. It does not copy raw provider output
 into the progress event. Set `progress_interval_ms` on the implementation step
 to change the interval.
 
+Verification writes complete merged standard output to a protected file in
+`.hancho/logs/`. Factory activity contains one `verify.progress` event per 64
+KiB and one `verify.completed` summary. It does not write one factory event for
+each test-runner output chunk. `hancho run inspect` reports the complete output
+path.
+
 ## Factory activity logs
 
 Hancho writes factory activity to `.hancho/logs/factory.jsonl` by default. These events contain command output, workflow changes, agent activity, and other factory work. They are separate from the normal diagnostic logs for the Hancho application.

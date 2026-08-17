@@ -97,10 +97,25 @@ defmodule Hancho.ActionsTest do
   defmodule Command do
     def run("/test/mix", ["test"], options) do
       if options[:cwd] == "/repo/worktree" do
+        :ok = options[:on_output].(:stdout, "2 tests, 0 failures\n")
         {:ok, %Result{stdout: "2 tests, 0 failures\n", stderr: "", exit_status: 0}}
       else
         {:error, :invalid_command_options}
       end
+    end
+  end
+
+  defmodule ChunkedCommand do
+    def run("/test/mix", ["test"], options) do
+      Enum.each(1..1_103, fn _index -> :ok = options[:on_output].(:stdout, ".") end)
+      :ok = options[:on_output].(:stdout, "\nResult: 762 passed\n")
+
+      {:ok,
+       %Result{
+         stdout: String.duplicate(".", 1_103) <> "\nResult: 762 passed\n",
+         stderr: "",
+         exit_status: 0
+       }}
     end
   end
 
@@ -229,10 +244,13 @@ defmodule Hancho.ActionsTest do
   end
 
   test "runs the configured verification command and captures its output" do
+    repository = temporary_repository()
+
     assert {:ok, result} =
              Jido.Exec.run(
                Actions.Verify,
                %{
+                 repo_path: repository,
                  worktree_path: "/repo/worktree",
                  executable: "/test/mix",
                  arguments: ["test"],
@@ -243,6 +261,47 @@ defmodule Hancho.ActionsTest do
 
     assert result.exit_status == 0
     assert result.output =~ "0 failures"
+    assert File.read!(result.output_path) == "2 tests, 0 failures\n"
+    assert result.bytes == 20
+    assert result.chunks == 1
+  end
+
+  test "coalesces verification chunks and retains complete raw output" do
+    repository = temporary_repository()
+    project = Hancho.Project.new(repository)
+    {:ok, config} = Hancho.Config.load(project)
+    {:ok, log} = Hancho.Log.open(project, config)
+
+    assert {:ok, result} =
+             Jido.Exec.run(
+               Actions.Verify,
+               %{
+                 repo_path: repository,
+                 worktree_path: repository,
+                 executable: "/test/mix",
+                 arguments: ["test"],
+                 timeout_ms: 1_000
+               },
+               %{services: %{command: ChunkedCommand}, log: log, run_id: "run-verify"}
+             )
+
+    assert result.summary == "Result: 762 passed"
+    assert result.chunks == 1_104
+
+    assert File.read!(result.output_path) ==
+             String.duplicate(".", 1_103) <> "\nResult: 762 passed\n"
+
+    assert :ok = Hancho.Log.close(log)
+
+    events =
+      project
+      |> then(&Path.join(&1.logs_path, "factory.jsonl"))
+      |> File.stream!()
+      |> Enum.map(&Jason.decode!/1)
+
+    refute Enum.any?(events, &(&1["event"] == "verify.stdout"))
+    assert Enum.count(events, &(&1["event"] == "verify.completed")) == 1
+    assert Enum.count(events, &(&1["event"] == "verify.progress")) == 0
   end
 
   test "validates changed paths against the Beadwork Allowed Scope" do

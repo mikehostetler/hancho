@@ -40,6 +40,7 @@ steps:
   - name: verify
     action: Hancho.Actions.Verify
     params:
+      repo_path: "$steps.preflight.repo_path"
       worktree_path: "$steps.create_worktree.worktree_path"
       executable: mix
       arguments:
