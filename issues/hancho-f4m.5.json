@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T14:25:02Z",
+  "description": "Add list, inspect, and safe clean commands for retained worktrees and generated artifacts.",
+  "id": "hancho-f4m.5",
+  "labels": [],
+  "parent": "hancho-f4m",
+  "priority": 2,
+  "status": "open",
+  "title": "Manage retained Hancho worktrees",
+  "type": "task",
+  "updated_at": "2026-08-17T14:25:02Z"
+}
