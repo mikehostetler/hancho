@@ -9,14 +9,16 @@
   "blocks": [
     "hancho-q4k.7"
   ],
+  "closed_at": "2026-08-17T16:45:00Z",
+  "close_reason": "Implemented typed adapter and queue boundaries, stable action artifacts, repository-path validation, and durable record upgrades.",
   "created": "2026-08-17T15:51:19Z",
   "description": "Split issue selection, queue planning, execution, reporting, and adapter data. Remove or enforce dead repo.path configuration. Keep typed task data and store state behind explicit boundaries.",
   "id": "hancho-q4k.6",
   "labels": [],
   "parent": "hancho-q4k",
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Clean factory architecture boundaries",
   "type": "task",
-  "updated_at": "2026-08-17T16:28:30Z"
+  "updated_at": "2026-08-17T16:45:00Z"
 }
