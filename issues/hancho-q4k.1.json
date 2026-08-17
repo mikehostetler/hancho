@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [
     "hancho-q4k.2",
@@ -13,8 +13,8 @@
   "labels": [],
   "parent": "hancho-q4k",
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "Add crash recovery and factory leases",
   "type": "task",
-  "updated_at": "2026-08-17T15:51:28Z"
+  "updated_at": "2026-08-17T15:51:41Z"
 }
