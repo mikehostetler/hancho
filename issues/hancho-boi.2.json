@@ -5,14 +5,16 @@
     "hancho-boi.3"
   ],
   "blocks": [],
+  "closed_at": "2026-08-17T19:42:48Z",
+  "close_reason": "Implemented private run and queue reports with primary-error preservation and CLI paths",
   "created": "2026-08-17T19:25:12Z",
   "description": "Write private repository-local JSON reports for stopped runs and queues. Preserve the primary workflow error when reconciliation also fails. Include Git state, artifacts, cleanup results, and report paths in CLI output.",
   "id": "hancho-boi.2",
   "labels": [],
   "parent": "hancho-boi",
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Write failure forensic reports",
   "type": "task",
-  "updated_at": "2026-08-17T19:32:06Z"
+  "updated_at": "2026-08-17T19:42:48Z"
 }
