@@ -2,6 +2,7 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T02:51:18Z",
   "created": "2026-08-17T02:14:09Z",
   "description": "Remove Exqlite, sqlite3 integration, and native SQLite packaging. Add bedrock from its GitHub repository and persist workflow run and step state in a repository-local Bedrock cluster under .hancho.",
   "id": "hancho-i81",
@@ -13,8 +14,8 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Replace SQLite with Bedrock state storage",
   "type": "task",
-  "updated_at": "2026-08-17T02:51:15Z"
+  "updated_at": "2026-08-17T02:51:18Z"
 }
