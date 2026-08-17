@@ -91,6 +91,43 @@ defmodule Hancho.ForensicsTest do
              "/repo/.hancho/forensics/runs/queue-failed-001.json"
   end
 
+  test "writes a wrapped action error as structured forensic data" do
+    repository = temporary_repository()
+    project = Hancho.Project.new(repository)
+
+    error =
+      Jido.Action.Error.ExecutionFailureError.exception(
+        message: "Scope validation failed",
+        details: %{
+          code: "changes_outside_allowed_scope",
+          unexpected_paths: ["test/outside_scope_test.exs"]
+        }
+      )
+
+    assert {:ok, result} =
+             Result.new(%{
+               run_id: "run-wrapped-error",
+               workflow: "implement_in_place",
+               status: :stopped,
+               current_step: "validate_scope",
+               outputs: %{},
+               artifacts: %{},
+               error: error
+             })
+
+    assert {:ok, path} = Forensics.capture_run(project, result)
+    report = path |> File.read!() |> Jason.decode!()
+
+    assert report["run"]["error"] == %{
+             "type" => "Jido.Action.Error.ExecutionFailureError",
+             "message" => "Scope validation failed",
+             "details" => %{
+               "code" => "changes_outside_allowed_scope",
+               "unexpected_paths" => ["test/outside_scope_test.exs"]
+             }
+           }
+  end
+
   defp private_mode?(path, expected) do
     {:ok, stat} = File.stat(path)
     Bitwise.band(stat.mode, 0o777) == expected

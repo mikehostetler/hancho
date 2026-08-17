@@ -35,20 +35,41 @@ defmodule Hancho.Workflow.Repair do
   end
 
   @spec error_code(Step.t(), term()) :: String.t() | nil
-  def error_code(_step, reason) when is_map(reason) do
-    case Map.get(reason, :code, Map.get(reason, "code")) do
-      value when is_atom(value) -> Atom.to_string(value)
+  def error_code(step, reason) when is_map(reason) do
+    direct_code(reason) ||
+      reason |> field(:details) |> direct_code() ||
+      error_code_from_message(step, field(reason, :message))
+  end
+
+  def error_code(%Step{action: "Hancho.Actions.Verify"}, reason) when is_binary(reason) do
+    verification_error_code(reason)
+  end
+
+  def error_code(_step, _reason), do: nil
+
+  defp direct_code(reason) when is_map(reason) do
+    case field(reason, :code) do
+      value when is_atom(value) and not is_nil(value) -> Atom.to_string(value)
       value when is_binary(value) -> value
       _other -> nil
     end
   end
 
-  def error_code(%Step{action: "Hancho.Actions.Verify"}, reason) when is_binary(reason) do
-    if String.starts_with?(reason, "Verification failed with exit status"),
+  defp direct_code(_reason), do: nil
+
+  defp error_code_from_message(%Step{action: "Hancho.Actions.Verify"}, message)
+       when is_binary(message),
+       do: verification_error_code(message)
+
+  defp error_code_from_message(_step, _message), do: nil
+
+  defp verification_error_code(message) do
+    if String.starts_with?(message, "Verification failed with exit status"),
       do: "verification_failed"
   end
 
-  def error_code(_step, _reason), do: nil
+  defp field(map, key) when is_map(map),
+    do: Map.get(map, key, Map.get(map, Atom.to_string(key)))
 
   @spec prepare(Step.t(), map(), term(), map(), map(), pos_integer()) ::
           {:ok, map(), map()} | {:error, term()}

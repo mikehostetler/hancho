@@ -101,6 +101,20 @@ defmodule Hancho.Log.Event do
   def normalize(%NaiveDateTime{} = value), do: NaiveDateTime.to_iso8601(value)
   def normalize(%Date{} = value), do: Date.to_iso8601(value)
   def normalize(%Time{} = value), do: Time.to_iso8601(value)
+
+  def normalize(value) when is_exception(value) do
+    fields =
+      value
+      |> Map.from_struct()
+      |> Map.drop([:__exception__, :message])
+      |> normalize()
+
+    Map.merge(fields, %{
+      "type" => inspect(value.__struct__),
+      "message" => Exception.message(value)
+    })
+  end
+
   def normalize(value) when is_struct(value), do: inspect(value)
   def normalize(value) when is_list(value), do: Enum.map(value, &normalize/1)
   def normalize(value) when is_tuple(value), do: value |> Tuple.to_list() |> normalize()

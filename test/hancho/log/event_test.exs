@@ -41,6 +41,26 @@ defmodule Hancho.Log.EventTest do
            }
   end
 
+  test "keeps exception details as structured data" do
+    error =
+      Jido.Action.Error.ExecutionFailureError.exception(
+        message: "Scope validation failed",
+        details: %{
+          code: "changes_outside_allowed_scope",
+          unexpected_paths: ["test/outside_scope_test.exs"]
+        }
+      )
+
+    assert Event.normalize(error) == %{
+             "type" => "Jido.Action.Error.ExecutionFailureError",
+             "message" => "Scope validation failed",
+             "details" => %{
+               "code" => "changes_outside_allowed_scope",
+               "unexpected_paths" => ["test/outside_scope_test.exs"]
+             }
+           }
+  end
+
   test "rejects invalid event fields" do
     assert Event.new("message", level: :invalid) == {:error, {:invalid_level, :invalid}}
     assert Event.new("message", event: "") == {:error, {:invalid_event, ""}}
