@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T00:09:34Z",
+  "description": "Add capture sinks, tests for durable JSONL and text output, rotation and disabled logging, escript validation, and documentation.",
+  "id": "hancho-jd4.3",
+  "labels": [],
+  "parent": "hancho-jd4",
+  "priority": 1,
+  "status": "open",
+  "title": "Integrate and verify log capture",
+  "type": "task",
+  "updated_at": "2026-08-17T00:09:34Z"
+}
