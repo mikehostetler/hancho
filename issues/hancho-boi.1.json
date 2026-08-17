@@ -4,6 +4,7 @@
   "blocks": [
     "hancho-boi.2"
   ],
+  "closed_at": "2026-08-17T19:27:18Z",
   "created": "2026-08-17T19:25:12Z",
   "description": "After a workflow stops, retain source changes but safely remove untracked generated deps, _build, and cover directories from its retained Hancho worktree. Record removed and skipped data.",
   "id": "hancho-boi.1",
@@ -16,7 +17,7 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Prune generated data from failed worktrees",
   "type": "task",
   "updated_at": "2026-08-17T19:27:18Z"
