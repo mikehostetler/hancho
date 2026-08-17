@@ -2,14 +2,15 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-17T14:48:46Z",
   "created": "2026-08-17T14:25:02Z",
   "description": "Coalesce verification output, retain complete raw output, and keep console and factory activity concise.",
   "id": "hancho-f4m.4",
   "labels": [],
   "parent": "hancho-f4m",
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Compact verification activity",
   "type": "task",
-  "updated_at": "2026-08-17T14:46:03Z"
+  "updated_at": "2026-08-17T14:48:46Z"
 }
