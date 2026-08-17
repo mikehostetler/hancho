@@ -9,9 +9,15 @@
   "id": "hancho-boi.1",
   "labels": [],
   "parent": "hancho-boi",
+  "comments": [
+    {
+      "text": "Implemented in 70b8a4c. Failed runs now remove safe untracked _build, deps, and cover data while they keep source changes. Tracked directories are skipped.",
+      "timestamp": "2026-08-17T19:27:18Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "Prune generated data from failed worktrees",
   "type": "task",
-  "updated_at": "2026-08-17T19:25:16Z"
+  "updated_at": "2026-08-17T19:27:18Z"
 }
