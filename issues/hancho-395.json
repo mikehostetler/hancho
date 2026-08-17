@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-08-17T19:06:28Z",
+  "description": "Make the existing --verbose option stream useful normalized Jido.Harness provider events to the console during implementation. Keep normal mode unchanged. Summarize tool results instead of dumping large or sensitive payloads.",
+  "id": "hancho-395",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Stream harness events in verbose mode",
+  "type": "task",
+  "updated_at": "2026-08-17T19:06:28Z"
+}
