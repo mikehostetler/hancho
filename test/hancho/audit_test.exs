@@ -2,9 +2,10 @@ defmodule Hancho.AuditTest do
   use ExUnit.Case, async: true
 
   test "contains audit writer failures" do
-    dead_writer = spawn(fn -> :ok end)
+    dead_writer = spawn(fn -> receive do: (:stop -> :ok) end)
     monitor = Process.monitor(dead_writer)
-    assert_receive {:DOWN, ^monitor, :process, ^dead_writer, :normal}
+    send(dead_writer, :stop)
+    assert_receive {:DOWN, ^monitor, :process, ^dead_writer, :normal}, 1_000
 
     assert :ok = Hancho.Audit.write(dead_writer, "factory work continues")
     assert :ok = Hancho.Audit.close(dead_writer)

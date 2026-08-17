@@ -47,8 +47,8 @@ defmodule Hancho.MixProject do
         "format --check-formatted",
         "compile --warnings-as-errors",
         "test --cover --exclude subprocess",
-        "test --only subprocess",
-        "escript.build",
+        "cmd env MIX_ENV=test mix test --only subprocess",
+        "cmd env MIX_ENV=prod mix escript.build",
         "cmd elixir scripts/escript_smoke.exs"
       ]
     ]

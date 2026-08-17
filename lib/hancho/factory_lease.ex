@@ -100,7 +100,8 @@ defmodule Hancho.FactoryLease do
     owner = owner(token, command)
 
     with :ok <- write_owner(owner_path, owner),
-         heartbeat when is_pid(heartbeat) <- start_heartbeat(owner_path, owner),
+         heartbeat when is_pid(heartbeat) <-
+           start_heartbeat(owner_path, owner, stale_after_ms),
          {:ok, lease} <-
            new(%{
              path: path,
@@ -117,29 +118,33 @@ defmodule Hancho.FactoryLease do
     end
   end
 
-  defp start_heartbeat(owner_path, owner) do
+  defp start_heartbeat(owner_path, owner, stale_after_ms) do
     parent = self()
+    interval_ms = min(@heartbeat_interval_ms, max(div(stale_after_ms, 3), 1))
 
-    spawn_link(fn -> heartbeat_loop(parent, owner_path, owner) end)
+    spawn(fn ->
+      monitor = Process.monitor(parent)
+      heartbeat_loop(monitor, owner_path, owner, interval_ms)
+    end)
   end
 
-  defp heartbeat_loop(parent, owner_path, owner) do
+  defp heartbeat_loop(parent_monitor, owner_path, owner, interval_ms) do
     expected_token = owner["token"]
 
     receive do
       {:stop, from} ->
         send(from, {:heartbeat_stopped, self()})
 
-      {:EXIT, ^parent, _reason} ->
+      {:DOWN, ^parent_monitor, :process, _parent, _reason} ->
         :ok
     after
-      @heartbeat_interval_ms ->
+      interval_ms ->
         updated = Map.put(owner, "heartbeat_at_ms", now_ms())
 
         case owner_token(owner_path) do
           {:ok, ^expected_token} ->
             case write_owner(owner_path, updated) do
-              :ok -> heartbeat_loop(parent, owner_path, updated)
+              :ok -> heartbeat_loop(parent_monitor, owner_path, updated, interval_ms)
               {:error, _reason} -> :ok
             end
 

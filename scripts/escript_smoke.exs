@@ -1,6 +1,24 @@
 root = Path.expand("..", __DIR__)
 hancho = Path.join(root, "hancho")
 
+{:ok, sections} = :escript.extract(String.to_charlist(hancho), [])
+{:archive, archive} = List.keyfind(sections, :archive, 0)
+{:ok, entries} = :zip.list_dir(archive)
+
+archive_names =
+  for entry <- entries,
+      name = elem(entry, 1),
+      is_list(name),
+      do: List.to_string(name)
+
+unless Enum.any?(archive_names, &String.ends_with?(&1, "Elixir.Hancho.CLI.beam")) do
+  raise "production escript does not contain Hancho.CLI"
+end
+
+if Enum.any?(archive_names, &String.ends_with?(&1, "Elixir.Hancho.TestHarnessAdapter.beam")) do
+  raise "production escript contains the test Harness adapter"
+end
+
 {version, 0} = System.cmd(hancho, ["--version"], cd: root, stderr_to_stdout: true)
 
 unless Regex.match?(~r/^\d+\.\d+\.\d+\n$/, version) do
