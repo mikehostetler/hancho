@@ -25,7 +25,7 @@ defmodule Hancho.MixProject do
   defp deps do
     [
       {:bedrock,
-       github: "mikehostetler/bedrock", ref: "6d7aa745ee6b3376f260bba1bda8b3c4c34539c2"},
+       github: "mikehostetler/bedrock", ref: "84e7cd3c92df39721d7d15718b80befc2f351833"},
       {:erlexec, "~> 2.3.4", runtime: false},
       {:git, "~> 0.7.0"},
       {:jason, "~> 1.4"},

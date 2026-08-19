@@ -1,5 +1,5 @@
 %{
-  "bedrock": {:git, "https://github.com/mikehostetler/bedrock.git", "6d7aa745ee6b3376f260bba1bda8b3c4c34539c2", [ref: "6d7aa745ee6b3376f260bba1bda8b3c4c34539c2"]},
+  "bedrock": {:git, "https://github.com/mikehostetler/bedrock.git", "84e7cd3c92df39721d7d15718b80befc2f351833", [ref: "84e7cd3c92df39721d7d15718b80befc2f351833"]},
   "bedrock_raft": {:hex, :bedrock_raft, "0.9.7", "0a834f34112192fb27b47a8323309236035016f2fc821fd5452f024abc2c9cf5", [:mix], [{:telemetry, "~> 1.3.0", [hex: :telemetry, repo: "hexpm", optional: false]}], "hexpm", "b000a08200fee9a0c5275bc169350bac7c945be465cbefdd32904dca127aea82"},
   "certifi": {:hex, :certifi, "2.15.0", "0e6e882fcdaaa0a5a9f2b3db55b1394dba07e8d6d9bcad08318fb604c6839712", [:rebar3], [], "hexpm", "b147ed22ce71d72eafdad94f055165c1c182f61a2ff49df28bcc71d1d5b94a60"},
   "erlexec": {:hex, :erlexec, "2.3.4", "91e8374e269d82cce0d5cbb47ebc8a4810d56474a767a5575ab22b40cf6ff5f9", [:rebar3], [], "hexpm", "ab0c6c3569a9f991fbfe6624961a88688610738589ff9dbad24db9bb27ae233b"},
