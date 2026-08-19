@@ -9,7 +9,7 @@ defmodule Hancho.Actions.Implement do
         prompt: Zoi.string() |> Zoi.min(1),
         worktree_path: Zoi.string() |> Zoi.min(1),
         provider: Zoi.string() |> Zoi.min(1),
-        reasoning_effort: Zoi.enum(["low", "medium", "high"]) |> Zoi.optional(),
+        reasoning_effort: Zoi.enum(["low", "medium", "high", "xhigh"]) |> Zoi.optional(),
         timeout_ms: Zoi.integer() |> Zoi.min(1),
         idle_timeout_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(300_000),
         progress_interval_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(30_000)
@@ -54,13 +54,13 @@ defmodule Hancho.Actions.Implement do
 
   defp run_harness(harness, provider, params, prior_run, context) do
     repository = repository_from_worktree(params.worktree_path)
+    reasoning_options = reasoning_options(provider, Map.get(params, :reasoning_effort))
 
     options =
       [
         cwd: params.worktree_path,
         approval_mode: approval_mode(provider),
         sandbox_mode: :workspace_write,
-        reasoning_effort: params |> Map.get(:reasoning_effort) |> reasoning_effort(),
         runtime_timeout_ms: params.timeout_ms,
         idle_timeout_ms: min(params.idle_timeout_ms, params.timeout_ms),
         await_timeout: params.timeout_ms + 60_000,
@@ -70,6 +70,7 @@ defmodule Hancho.Actions.Implement do
         resume_run_id: prior_run_id(prior_run),
         resume_cursor: prior_cursor(prior_run)
       ]
+      |> Keyword.merge(reasoning_options)
       |> verbose_event_options(context)
 
     if Code.ensure_loaded?(harness) and function_exported?(harness, :run_with_progress, 4) do
@@ -86,10 +87,16 @@ defmodule Hancho.Actions.Implement do
   defp approval_mode(:grok), do: :auto_approve
   defp approval_mode(_provider), do: :auto_edit
 
-  defp reasoning_effort(nil), do: nil
-  defp reasoning_effort("low"), do: :low
-  defp reasoning_effort("medium"), do: :medium
-  defp reasoning_effort("high"), do: :high
+  # Jido Harness currently stops its provider-neutral enum at :high. Grok 1.0.5
+  # accepts xhigh through its documented --reasoning-effort option.
+  defp reasoning_options(:grok, "xhigh") do
+    [reasoning_effort: nil, provider_options: %{extra_args: ["--reasoning-effort=xhigh"]}]
+  end
+
+  defp reasoning_options(_provider, nil), do: [reasoning_effort: nil]
+  defp reasoning_options(_provider, "low"), do: [reasoning_effort: :low]
+  defp reasoning_options(_provider, "medium"), do: [reasoning_effort: :medium]
+  defp reasoning_options(_provider, "high"), do: [reasoning_effort: :high]
 
   defp progress_callback(context) do
     fn progress ->

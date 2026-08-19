@@ -77,7 +77,7 @@ defmodule Hancho.CLITest do
          repository: %{branch: "main", head: "abc123", clean: true, worktrees: ["retained"]},
          settings: %{
            provider: "grok",
-           reasoning_effort: "high",
+           reasoning_effort: "xhigh",
            implementation_timeout_ms: 1_800_000,
            verification_timeout_ms: 600_000,
            repairs: [
@@ -437,7 +437,7 @@ defmodule Hancho.CLITest do
                "Repository: main at abc123 (clean)\n" <>
                "Retained worktrees: 1\n" <>
                "Provider: grok\n" <>
-               "Reasoning effort: high\n" <>
+               "Reasoning effort: xhigh\n" <>
                "Timeouts: implement 1800000 ms, verify 600000 ms\n" <>
                "Repair: validate_scope via grok, 1 attempt (changes_outside_allowed_scope)\n" <>
                "1. task-1 — First task\n"

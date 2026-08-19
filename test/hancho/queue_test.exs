@@ -119,7 +119,7 @@ defmodule Hancho.QueueTest do
               "prompt" => "Implement the selected task.",
               "worktree_path" => "$input.repo_path",
               "provider" => "grok",
-              "reasoning_effort" => "high",
+              "reasoning_effort" => "xhigh",
               "timeout_ms" => 1_800_000
             }
           },
@@ -402,7 +402,7 @@ defmodule Hancho.QueueTest do
 
     assert preview.settings == %{
              provider: "grok",
-             reasoning_effort: "high",
+             reasoning_effort: "xhigh",
              implementation_timeout_ms: 1_800_000,
              verification_timeout_ms: 600_000,
              repairs: []
