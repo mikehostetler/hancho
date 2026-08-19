@@ -2,11 +2,13 @@ defmodule Hancho.Workflow.Runner do
   @moduledoc "Runs one workflow in the foreground."
 
   alias Hancho.Workflow.{
+    Artifacts,
     Compiler,
     Definition,
     FailureCleanup,
     Loader,
     Repair,
+    Result,
     RunReconciler,
     Runtime,
     Store
@@ -88,7 +90,7 @@ defmodule Hancho.Workflow.Runner do
          {:ok, input} <- Jason.decode(run["input_json"]),
          {:ok, _compiled} <- compiler.compile(project, definition, input, options),
          {:ok, steps} <- store_api.list_steps(store, run_id),
-         {:ok, position} <- resumable_position(steps),
+         {:ok, recovery} <- recovery_action(steps),
          {:ok, outputs} <- completed_outputs(steps),
          {:ok, repairs} <- Repair.from_steps(steps),
          {:ok, _summary} <-
@@ -97,27 +99,85 @@ defmodule Hancho.Workflow.Runner do
              outputs,
              Keyword.put(reconcile_options(options), :definition, definition)
            ) do
-      with_audit_log(project, run_id, options, fn log ->
-        with :ok <- store_api.retry_run(store, run_id, position),
-             :ok <-
-               Hancho.Audit.write(log, "Workflow retry started",
-                 event: "workflow.retry_started",
-                 metadata: %{step: Enum.at(definition.steps, position).name}
-               ),
-             {:ok, result} <-
-               run_runtime(definition, input, run_id, store, log, options, %{
-                 index: position,
-                 outputs: outputs,
-                 artifacts:
-                   definition
-                   |> Hancho.Workflow.Artifacts.from_outputs(outputs)
-                   |> put_repairs(repairs),
-                 repairs: repairs
-               }) do
-          {:ok, attach_failure_evidence(project, result, options)}
-        end
-      end)
+      recover_run(
+        project,
+        definition,
+        input,
+        run_id,
+        store,
+        outputs,
+        repairs,
+        recovery,
+        options
+      )
     end
+  end
+
+  defp recover_run(
+         project,
+         definition,
+         input,
+         run_id,
+         store,
+         outputs,
+         repairs,
+         {:retry, position},
+         options
+       ) do
+    store_api = Keyword.get(options, :store_api, Store)
+
+    with_audit_log(project, run_id, options, fn log ->
+      with :ok <- store_api.retry_run(store, run_id, position),
+           :ok <-
+             Hancho.Audit.write(log, "Workflow retry started",
+               event: "workflow.retry_started",
+               metadata: %{step: Enum.at(definition.steps, position).name}
+             ),
+           {:ok, result} <-
+             run_runtime(definition, input, run_id, store, log, options, %{
+               index: position,
+               outputs: outputs,
+               artifacts: definition |> Artifacts.from_outputs(outputs) |> put_repairs(repairs),
+               repairs: repairs
+             }) do
+        {:ok, attach_failure_evidence(project, result, options)}
+      end
+    end)
+  end
+
+  defp recover_run(
+         project,
+         definition,
+         _input,
+         run_id,
+         store,
+         outputs,
+         repairs,
+         :finalize,
+         options
+       ) do
+    store_api = Keyword.get(options, :store_api, Store)
+    artifacts = definition |> Artifacts.from_outputs(outputs) |> put_repairs(repairs)
+
+    with_audit_log(project, run_id, options, fn log ->
+      with :ok <- store_api.complete_run(store, run_id, outputs),
+           :ok <-
+             Hancho.Audit.write(log, "Workflow recovery completed",
+               event: "workflow.recovery_completed"
+             ),
+           {:ok, result} <-
+             Result.new(%{
+               run_id: run_id,
+               workflow: definition.name,
+               status: :completed,
+               current_step: nil,
+               outputs: outputs,
+               artifacts: artifacts,
+               error: nil
+             }) do
+        {:ok, attach_failure_evidence(project, result, options)}
+      end
+    end)
   end
 
   defp run_runtime(definition, input, run_id, store, log, options, resume \\ %{}) do
@@ -189,10 +249,20 @@ defmodule Hancho.Workflow.Runner do
     error -> {:error, Exception.message(error)}
   end
 
-  defp resumable_position(steps) do
+  defp recovery_action(steps) do
     case Enum.find(steps, &(&1["status"] in ["stopped", "running", "recovery_required"])) do
-      nil -> {:error, :resumable_step_not_found}
-      step -> {:ok, step["position"]}
+      nil -> completed_recovery(steps)
+      step -> {:ok, {:retry, step["position"]}}
+    end
+  end
+
+  defp completed_recovery([]), do: {:error, :resumable_step_not_found}
+
+  defp completed_recovery(steps) do
+    if Enum.all?(steps, &(&1["status"] == "completed")) do
+      {:ok, :finalize}
+    else
+      {:error, :resumable_step_not_found}
     end
   end
 

@@ -3,7 +3,16 @@ defmodule Hancho.Workflow.Store do
 
   alias Hancho.Log.Event
   alias Hancho.State.{Bedrock, Repo}
-  alias Hancho.Workflow.{EffectRecord, QueueRecord, Repair, RepairRecord, RunRecord, StepRecord}
+
+  alias Hancho.Workflow.{
+    EffectRecord,
+    QueueRecord,
+    RecordRange,
+    Repair,
+    RepairRecord,
+    RunRecord,
+    StepRecord
+  }
 
   @prefix "hancho/workflow/runs/"
   @queue_prefix "hancho/workflow/queues/"
@@ -156,7 +165,12 @@ defmodule Hancho.Workflow.Store do
       key = run_key(run_id)
 
       with {:ok, run} <- get_run(key),
-           :ok <- status_in(run, ["running"], :run_not_running),
+           :ok <-
+             status_in(
+               run,
+               ["running", "stopped", "recovery_required"],
+               :run_not_completable
+             ),
            {:ok, steps} <- read_steps(run_id),
            true <-
              (steps != [] and Enum.all?(steps, &(&1["status"] == "completed"))) ||
@@ -166,6 +180,7 @@ defmodule Hancho.Workflow.Store do
           |> Map.put("status", "completed")
           |> Map.put("current_step", nil)
           |> Map.put("finished_at", now())
+          |> Map.put("error_json", nil)
 
         put_run(key, bump(completed))
       else
@@ -741,13 +756,9 @@ defmodule Hancho.Workflow.Store do
     prefix = step_prefix(run_id)
 
     prefix
-    |> then(&Repo.get_range({&1, &1 <> <<255>>}))
-    |> Enum.reduce_while({:ok, []}, fn {_key, encoded}, {:ok, steps} ->
-      case decode_record(encoded, StepRecord) do
-        {:ok, step} -> {:cont, {:ok, [step | steps]}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
+    |> Elixir.Bedrock.KeyRange.from_prefix()
+    |> Repo.get_range()
+    |> RecordRange.decode_prefix(prefix, &decode_record(&1, StepRecord))
     |> case do
       {:ok, steps} -> {:ok, Enum.sort_by(steps, & &1["position"])}
       error -> error

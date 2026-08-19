@@ -504,6 +504,49 @@ defmodule Hancho.WorkflowTest do
     Store.flush(reopened)
   end
 
+  test "finalizes a stopped run when every step is already complete" do
+    {project, _workflow_path} = project_with_workflow(successful_workflow())
+    {:ok, definition, source} = Loader.load_with_source(project, "test")
+    [first, second] = definition.steps
+
+    assert {:ok, store} = Store.open(project.bedrock_path)
+    assert :ok = Store.create_run(store, "run-final-step", definition, %{"number" => 3}, source)
+    assert :ok = Store.start_step(store, "run-final-step", 0, first, first.params)
+    assert :ok = Store.complete_step(store, "run-final-step", 0, %{"value" => 4}, %{})
+    assert :ok = Store.start_step(store, "run-final-step", 1, second, second.params)
+    assert :ok = Store.complete_step(store, "run-final-step", 1, %{"value" => 8}, %{})
+
+    assert :ok =
+             Store.fail_run(
+               store,
+               "run-final-step",
+               "second",
+               %{},
+               {:bedrock, "expected a map, got a durability marker"}
+             )
+
+    assert {:ok, completed} =
+             Runner.retry(project, "run-final-step",
+               registry: Registry,
+               executor: Executor,
+               reconciler: RetryReconciler,
+               log: :disabled,
+               flush_state: false
+             )
+
+    assert completed.status == :completed
+    assert completed.current_step == nil
+    expected_outputs = %{"first" => %{"value" => 4}, "second" => %{"value" => 8}}
+    assert completed.outputs == expected_outputs
+    assert_received {:retry_reconciled, ^expected_outputs}
+
+    assert {:ok, run} = Store.fetch_run(store, "run-final-step")
+    assert run["status"] == "completed"
+    assert run["current_step"] == nil
+    assert run["error_json"] == nil
+    Store.flush(store)
+  end
+
   test "rejects completion while a run has an incomplete step" do
     {project, _workflow_path} = project_with_workflow(successful_workflow())
     {:ok, definition, source} = Loader.load_with_source(project, "test")
