@@ -26,6 +26,16 @@ defmodule Hancho.GitTest do
              {:ok, "4b825dc642cb6eb9a060e54bf8d69288fbee4904"}
   end
 
+  test "creates unsigned factory commits when repository signing is enabled" do
+    repository = temporary_repository()
+    File.write!(Path.join(repository, "change.txt"), "change\n")
+
+    {_output, 0} = System.cmd("git", ["-C", repository, "config", "commit.gpgsign", "true"])
+
+    assert {:ok, :done} = Hancho.Git.add_all(repository)
+    assert {:ok, %Git.CommitResult{}} = Hancho.Git.commit(repository, "Factory commit")
+  end
+
   defp temporary_repository do
     path = Path.join(System.tmp_dir!(), "hancho-git-#{System.unique_integer([:positive])}")
     File.mkdir_p!(path)
@@ -41,6 +51,8 @@ defmodule Hancho.GitTest do
         "user.name=Hancho Test",
         "-c",
         "user.email=hancho@example.test",
+        "-c",
+        "commit.gpgsign=false",
         "commit",
         "--allow-empty",
         "-m",

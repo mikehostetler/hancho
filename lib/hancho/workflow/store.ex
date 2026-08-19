@@ -17,8 +17,9 @@ defmodule Hancho.Workflow.Store do
     end
   end
 
-  @spec close(String.t()) :: :ok | {:error, term()}
-  def close(store), do: Bedrock.flush(store)
+  @doc "Waits until the current state is durable."
+  @spec flush(String.t()) :: :ok | {:error, term()}
+  def flush(store), do: Bedrock.flush(store)
 
   @spec create_run(String.t(), String.t(), Hancho.Workflow.Definition.t(), map(), map()) ::
           :ok | {:error, term()}
@@ -458,7 +459,7 @@ defmodule Hancho.Workflow.Store do
         Repo.rollback({:queue_already_running, active})
       else
         queue = %{
-          "record_version" => 1,
+          "record_version" => 2,
           "transition_version" => 0,
           "id" => id,
           "workflow_name" => workflow,
@@ -477,7 +478,6 @@ defmodule Hancho.Workflow.Store do
                 "issue_id" => item.issue_id,
                 "run_id" => item.run_id,
                 "status" => "pending",
-                "phase" => "selected",
                 "error" => nil
               }
             end),
@@ -500,10 +500,7 @@ defmodule Hancho.Workflow.Store do
            {:ok, item} <- queue_item(queue, position),
            :ok <- item_status(item, "pending") do
         queue
-        |> put_queue_item(
-          position,
-          item |> Map.put("status", "running") |> Map.put("phase", "child_starting")
-        )
+        |> put_queue_item(position, Map.put(item, "status", "running"))
         |> Map.put("current_run_id", item["run_id"])
       end
     end)
@@ -521,7 +518,6 @@ defmodule Hancho.Workflow.Store do
           position,
           item
           |> Map.put("status", "completed")
-          |> Map.put("phase", "completed")
           |> Map.put("error", nil)
         )
         |> Map.put("expected_head", expected_head)
@@ -542,7 +538,6 @@ defmodule Hancho.Workflow.Store do
         stopped_item =
           item
           |> Map.put("status", "stopped")
-          |> Map.put("phase", "child_stopped")
           |> Map.put("error", Event.normalize(error))
 
         queue =
@@ -573,7 +568,6 @@ defmodule Hancho.Workflow.Store do
         resumed_item =
           item
           |> Map.put("status", "running")
-          |> Map.put("phase", "child_starting")
           |> Map.put("error", nil)
 
         resumed_queue =

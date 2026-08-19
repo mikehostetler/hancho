@@ -36,9 +36,14 @@
 
 ## Working rules
 
-- Run `bw prime` before you start work.
-- Use Beadwork (`bw`) to keep plans, progress, and decisions in Git.
-- Complete Beadwork tasks by committing, closing the task, and running `bw sync`.
+- Do not run Beadwork for every prompt.
+- Start reviews, investigations, explanations, and small changes directly.
+- Use Beadwork (`bw`) only when the user requests it, when continuing an
+  existing Beadwork task, or when durable tracking is useful for work that will
+  span multiple sessions.
+- Do not stop to ask for a Beadwork delivery mode when Beadwork is not needed.
+- When work uses Beadwork, keep plans, progress, and decisions in Git. Complete
+  the task by committing, closing the task, and running `bw sync`.
 - Keep changes small and simple.
 - Preserve existing files unless the user asks you to remove them.
 - Update the README when you add a file that needs an explanation.

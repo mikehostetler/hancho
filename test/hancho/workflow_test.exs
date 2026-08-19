@@ -311,7 +311,7 @@ defmodule Hancho.WorkflowTest do
 
     assert {:ok, steps} = Store.list_steps(store, "run-success")
     assert Enum.map(steps, & &1["status"]) == ["completed", "completed"]
-    Store.close(store)
+    Store.flush(store)
   end
 
   test "passes verbose mode to workflow actions" do
@@ -364,7 +364,7 @@ defmodule Hancho.WorkflowTest do
 
     assert {:ok, steps} = Store.list_steps(store, "run-stopped")
     assert Enum.map(steps, & &1["status"]) == ["completed", "stopped"]
-    Store.close(store)
+    Store.flush(store)
   end
 
   test "retries only the stopped step and preserves completed outputs" do
@@ -411,7 +411,7 @@ defmodule Hancho.WorkflowTest do
     assert run["status"] == "completed"
     assert {:ok, steps} = Store.list_steps(store, "run-retry")
     assert Enum.map(steps, & &1["status"]) == ["completed", "completed"]
-    Store.close(store)
+    Store.flush(store)
   end
 
   test "repairs an approved gate failure and retries only that gate" do
@@ -445,7 +445,7 @@ defmodule Hancho.WorkflowTest do
     assert {:ok, [saved]} = Hancho.Workflow.Repair.decode_records(scope_step["repairs_json"])
     assert saved["status"] == "completed"
     assert saved["prompt_sha256"] == repair["prompt_sha256"]
-    Store.close(store)
+    Store.flush(store)
   end
 
   test "stops after the configured repair attempt limit" do
@@ -483,7 +483,7 @@ defmodule Hancho.WorkflowTest do
     assert {:ok, store} = Store.open(project.bedrock_path)
     assert :ok = Store.create_run(store, "run-interrupted", definition, %{"number" => 3}, source)
     assert :ok = Store.start_step(store, "run-interrupted", 0, first, first.params)
-    assert :ok = Store.close(store)
+    assert :ok = Store.flush(store)
 
     assert {:ok, completed} =
              Runner.retry(project, "run-interrupted",
@@ -501,7 +501,7 @@ defmodule Hancho.WorkflowTest do
     assert {:ok, run} = Store.fetch_run(reopened, "run-interrupted")
     assert run["status"] == "completed"
     assert run["transition_version"] > 0
-    Store.close(reopened)
+    Store.flush(reopened)
   end
 
   test "rejects completion while a run has an incomplete step" do
@@ -514,7 +514,7 @@ defmodule Hancho.WorkflowTest do
     assert {:error, :run_has_incomplete_steps} = Store.complete_run(store, "run-incomplete", %{})
     assert {:ok, run} = Store.fetch_run(store, "run-incomplete")
     assert run["status"] == "running"
-    Store.close(store)
+    Store.flush(store)
   end
 
   test "runs the default workflow through all approved actions" do
@@ -548,7 +548,7 @@ defmodule Hancho.WorkflowTest do
 
     assert {:ok, steps} = Store.list_steps(store, "full-run")
     assert Enum.all?(steps, &(&1["status"] == "completed"))
-    Store.close(store)
+    Store.flush(store)
 
     events = read_events(Path.join(project.logs_path, "factory.jsonl"))
     workflow_event = Enum.find(events, &(&1["event"] == "workflow.snapshot"))

@@ -20,7 +20,7 @@ defmodule Hancho.StateCorruptionTest do
     assert {:error, {:invalid_state_record, RunRecord, {:invalid_state, _message}}} =
              Store.fetch_run(store, run_id)
 
-    Store.close(store)
+    Store.flush(store)
   end
 
   test "rejects a durable record from an unknown schema version" do
@@ -56,7 +56,7 @@ defmodule Hancho.StateCorruptionTest do
     assert {:error, {:invalid_state_record, RunRecord, _reason}} =
              Store.fetch_run(store, run_id)
 
-    Store.close(store)
+    Store.flush(store)
   end
 
   defp temporary_directory do

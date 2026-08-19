@@ -40,7 +40,7 @@ defmodule Hancho.StateRecordTest do
     assert upgraded_step.repairs_json == "[]"
   end
 
-  test "derives queue phases for legacy queue items" do
+  test "removes legacy queue phases" do
     queue = %{
       "id" => "legacy-queue",
       "workflow_name" => "implement",
@@ -67,6 +67,7 @@ defmodule Hancho.StateRecordTest do
     }
 
     assert {:ok, upgraded} = queue |> QueueRecord.upgrade() |> QueueRecord.new()
-    assert hd(upgraded.items).phase == "child_stopped"
+    assert upgraded.record_version == 2
+    refute Map.has_key?(Map.from_struct(hd(upgraded.items)), :phase)
   end
 end

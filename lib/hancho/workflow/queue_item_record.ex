@@ -8,15 +8,6 @@ defmodule Hancho.Workflow.QueueItemRecord do
               issue_id: Zoi.string() |> Zoi.min(1),
               run_id: Zoi.string() |> Zoi.min(1),
               status: Zoi.enum(["pending", "running", "stopped", "completed"]),
-              phase:
-                Zoi.enum([
-                  "selected",
-                  "child_starting",
-                  "child_running",
-                  "child_stopped",
-                  "completed"
-                ])
-                |> Zoi.default("selected"),
               error: Zoi.any() |> Zoi.nullish()
             },
             coerce: true

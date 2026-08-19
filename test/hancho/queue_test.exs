@@ -238,7 +238,11 @@ defmodule Hancho.QueueTest do
 
   defmodule MemoryStore do
     def open(_path), do: {:ok, :memory}
-    def close(_store), do: :ok
+
+    def flush(_store) do
+      send(self(), :store_flushed)
+      :ok
+    end
 
     def create_queue(_store, id, workflow, source, items, state) do
       queue = %{
@@ -361,6 +365,12 @@ defmodule Hancho.QueueTest do
     assert_received {:reconciled, :after, 2}
     assert_received {:progress, "Reconciled before item 1: main at head-0, clean, 0 worktrees."}
     assert_received {:progress, "Queue queue-test completed 3/3 tasks."}
+
+    assert 8 ==
+             self()
+             |> Process.info(:messages)
+             |> elem(1)
+             |> Enum.count(&(&1 == :store_flushed))
 
     events = read_events(Path.join(project.logs_path, "factory.jsonl"))
     assert Enum.any?(events, &(&1["event"] == "queue.started"))
@@ -538,7 +548,7 @@ defmodule Hancho.QueueTest do
 
     assert :ok = Store.start_queue_item(store, "queue-pre-child", 0)
     assert :ok = Store.stop_queue_item(store, "queue-pre-child", 0, :interrupted)
-    assert :ok = Store.close(store)
+    assert :ok = Store.flush(store)
 
     assert {:ok, result} =
              QueueRunner.resume(project, "queue-pre-child",
@@ -614,7 +624,7 @@ defmodule Hancho.QueueTest do
     assert :ok = Store.start_queue_item(store, "queue-state", 0)
     assert :ok = Store.complete_queue_item(store, "queue-state", 0, "head-1")
     assert :ok = Store.complete_queue(store, "queue-state")
-    assert :ok = Store.close(store)
+    assert :ok = Store.flush(store)
 
     assert {:ok, reopened} = Store.open(project.bedrock_path)
     assert {:ok, queue} = Store.fetch_queue(reopened, "queue-state")
@@ -622,7 +632,7 @@ defmodule Hancho.QueueTest do
     assert queue["expected_head"] == "head-1"
     assert queue["expected_worktrees"] == []
     assert Enum.map(queue["items"], & &1["status"]) == ["completed"]
-    Store.close(reopened)
+    Store.flush(reopened)
   end
 
   test "persists a stopped queue resume in Bedrock" do
@@ -649,7 +659,7 @@ defmodule Hancho.QueueTest do
     assert queue["status"] == "running"
     assert hd(queue["items"])["status"] == "running"
     assert queue["error"] == nil
-    Store.close(store)
+    Store.flush(store)
   end
 
   test "reconciles real Git and worktree state and reports exact mismatches" do

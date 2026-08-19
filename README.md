@@ -1,6 +1,8 @@
 # Hancho
 
 Hancho is an Elixir escript that manages a software factory for one Git repository.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the current component boundaries,
+recovery rules, invariants, and simplification direction.
 
 Build and run it:
 
@@ -192,10 +194,10 @@ before the next step starts. If a step fails, Hancho stops the line, records the
 failed step and error, and returns a nonzero exit status. It keeps a failed
 implementation worktree for inspection when cleanup has not started. Bedrock
 stores its cluster descriptor, coordinator, log, and storage-worker files in
-this repository-local folder. Before the command returns, Hancho closes
-Bedrock's five-second in-memory storage window and verifies a durability marker.
-Run, step, and queue records have explicit schema and transition versions.
-Hancho upgrades older records when it reads them.
+this repository-local folder. Before a mutation command returns, Hancho waits
+beyond Bedrock's five-second in-memory storage window and verifies a durability
+marker. Run, step, and queue records have explicit schema and transition
+versions. Hancho upgrades older records when it reads them.
 
 Hancho records an intent before each external effect and records a receipt
 after the effect completes. Effects include task claims, worktree changes,
@@ -424,4 +426,7 @@ the tested `hancho/bedrock-next` integration commit in Mike Hostetler's Bedrock
 fork. That commit combines the current upstream recovery stack with the
 layout-index fixes required by Hancho.
 
-Hancho uses the [`git`](https://hex.pm/packages/git) package behind `Hancho.Git`. Git processes run through erlexec so Hancho can stop a timed-out command and its child processes.
+Hancho uses the [`git`](https://hex.pm/packages/git) package behind `Hancho.Git`.
+Git processes run through erlexec so Hancho can stop a timed-out command and its
+child processes. Hancho creates factory commits without GPG signing so an
+unattended run does not wait for an interactive key or a locked GPG database.

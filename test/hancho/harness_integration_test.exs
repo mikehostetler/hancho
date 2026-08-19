@@ -113,7 +113,7 @@ defmodule Hancho.HarnessIntegrationTest do
              project.hancho_dir
            )
 
-    assert :ok = Store.close(store)
+    assert :ok = Store.flush(store)
     assert :ok = Jido.Harness.Run.prune(harness_run_id)
   end
 

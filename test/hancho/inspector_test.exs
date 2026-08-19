@@ -5,7 +5,11 @@ defmodule Hancho.InspectorTest do
 
   defmodule Store do
     def open(_path), do: {:ok, :memory}
-    def close(:memory), do: :ok
+
+    def flush(:memory) do
+      send(self(), :store_flushed)
+      :ok
+    end
 
     def fetch_run(:memory, "run-inspect") do
       outputs = %{
@@ -84,5 +88,6 @@ defmodule Hancho.InspectorTest do
     assert report.failure == %{"message" => "branch changed"}
     assert Enum.map(report.steps, & &1.duration_ms) == [10_000, 80_000, 15_000, 0, 15_000]
     assert List.last(report.steps).error == "branch changed"
+    refute_received :store_flushed
   end
 end

@@ -8,12 +8,7 @@ defmodule Hancho.Workflow.Inspector do
     store_api = Keyword.get(options, :store_api, Store)
 
     with {:ok, store} <- store_api.open(project.bedrock_path) do
-      result = inspect_with_store(project, store_api, store, run_id)
-
-      case store_api.close(store) do
-        :ok -> result
-        {:error, reason} -> {:error, {:state_flush_failed, reason}}
-      end
+      inspect_with_store(project, store_api, store, run_id)
     end
   end
 

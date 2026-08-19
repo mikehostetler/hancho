@@ -39,22 +39,16 @@ defmodule Hancho.Workflow.QueueRunner do
          items = QueuePlan.build(queue_id, issues),
          {:ok, repository_state} <- reconciler.initial(project, reconcile_options(options)),
          {:ok, store} <- store_api.open(project.bedrock_path) do
-      result =
-        run_with_store(
-          project,
-          workflow,
-          source,
-          items,
-          queue_id,
-          repository_state,
-          store,
-          options
-        )
-
-      case store_api.close(store) do
-        :ok -> result
-        {:error, reason} -> {:error, {:state_flush_failed, reason}}
-      end
+      run_with_store(
+        project,
+        workflow,
+        source,
+        items,
+        queue_id,
+        repository_state,
+        store,
+        options
+      )
     end
   end
 
@@ -72,12 +66,7 @@ defmodule Hancho.Workflow.QueueRunner do
     store_api = Keyword.get(options, :store_api, Store)
 
     with {:ok, store} <- store_api.open(project.bedrock_path) do
-      result = resume_with_store(project, queue_id, store, options)
-
-      case store_api.close(store) do
-        :ok -> result
-        {:error, reason} -> {:error, {:state_flush_failed, reason}}
-      end
+      resume_with_store(project, queue_id, store, options)
     end
   end
 
@@ -170,7 +159,7 @@ defmodule Hancho.Workflow.QueueRunner do
              items,
              repository_state
            ),
-         :ok <- store_api.close(store),
+         :ok <- store_api.flush(store),
          :ok <-
            QueueReporter.emit(
              project,
@@ -196,7 +185,7 @@ defmodule Hancho.Workflow.QueueRunner do
          item = Enum.at(items, position),
          {:ok, recovery} <- child_recovery(store_api, store, item.run_id),
          :ok <- store_api.resume_queue(store, queue_id),
-         :ok <- store_api.close(store),
+         :ok <- store_api.flush(store),
          :ok <-
            QueueReporter.emit(
              project,
@@ -275,7 +264,7 @@ defmodule Hancho.Workflow.QueueRunner do
     store_api = Keyword.get(options, :store_api, Store)
 
     with :ok <- store_api.complete_queue(store, queue_id),
-         :ok <- store_api.close(store),
+         :ok <- store_api.flush(store),
          :ok <-
            QueueReporter.emit(
              project,
@@ -309,7 +298,7 @@ defmodule Hancho.Workflow.QueueRunner do
              options
            ),
          :ok <- store_api.start_queue_item(store, queue_id, position),
-         :ok <- store_api.close(store),
+         :ok <- store_api.flush(store),
          :ok <-
            QueueReporter.emit(
              project,
@@ -405,7 +394,7 @@ defmodule Hancho.Workflow.QueueRunner do
            ),
          landed when is_binary(landed) <- get_in(result.artifacts, ["landing", "commit"]),
          :ok <- store_api.complete_queue_item(store, queue_id, position, landed),
-         :ok <- store_api.close(store),
+         :ok <- store_api.flush(store),
          :ok <-
            QueueReporter.emit(
              project,
@@ -570,7 +559,7 @@ defmodule Hancho.Workflow.QueueRunner do
         ": #{inspect(error)}"
 
     with :ok <- store_api.stop_queue_item(store, queue_id, position, error),
-         :ok <- store_api.close(store),
+         :ok <- store_api.flush(store),
          :ok <-
            QueueReporter.emit(
              project,

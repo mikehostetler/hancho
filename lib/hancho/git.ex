@@ -8,6 +8,7 @@ defmodule Hancho.Git do
 
   @type option ::
           {:binary, String.t()}
+          | {:extra_config, [{String.t(), String.t()}]}
           | {:working_dir, String.t()}
           | {:timeout, pos_integer()}
           | {:untracked_files, :no | :normal | :all}
@@ -83,7 +84,18 @@ defmodule Hancho.Git do
   @spec commit(String.t(), String.t(), [option()]) ::
           {:ok, Git.CommitResult.t()} | {:error, term()}
   def commit(repository, message, options \\ []) do
-    Git.commit(message, config: config(Keyword.put(options, :working_dir, repository)))
+    extra_config =
+      options
+      |> Keyword.get(:extra_config, [])
+      |> Enum.reject(fn {key, _value} -> key == "commit.gpgsign" end)
+      |> Kernel.++([{"commit.gpgsign", "false"}])
+
+    commit_options =
+      options
+      |> Keyword.put(:working_dir, repository)
+      |> Keyword.put(:extra_config, extra_config)
+
+    Git.commit(message, config: config(commit_options))
   end
 
   @spec merge_ff_only(String.t(), String.t(), [option()]) ::

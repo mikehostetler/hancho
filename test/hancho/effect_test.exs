@@ -71,7 +71,7 @@ defmodule Hancho.EffectTest do
              Effect.run(context, "write", "file.write", %{path: marker}, reconcile, apply)
 
     assert Agent.get(counter, & &1) == 1
-    Store.close(store)
+    Store.flush(store)
   end
 
   defp temporary_directory do

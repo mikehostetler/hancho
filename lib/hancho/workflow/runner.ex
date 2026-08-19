@@ -34,7 +34,7 @@ defmodule Hancho.Workflow.Runner do
          {:ok, store} <- store_api.open(project.bedrock_path) do
       result = run_with_store(project, definition, workflow_source, input, store, options)
 
-      case close_store(store_api, store, options) do
+      case flush_store(store_api, store, options) do
         :ok -> result
         {:error, reason} -> {:error, {:state_flush_failed, reason}}
       end
@@ -57,7 +57,7 @@ defmodule Hancho.Workflow.Runner do
     with {:ok, store} <- store_api.open(project.bedrock_path) do
       result = retry_with_store(project, run_id, store, options)
 
-      case close_store(store_api, store, options) do
+      case flush_store(store_api, store, options) do
         :ok -> result
         {:error, reason} -> {:error, {:state_flush_failed, reason}}
       end
@@ -68,30 +68,13 @@ defmodule Hancho.Workflow.Runner do
     run_id = Keyword.get_lazy(options, :run_id, &new_run_id/0)
     store_api = Keyword.get(options, :store_api, Store)
 
-    with {:ok, log} <- open_log(project, run_id, options) do
-      try do
-        with :ok <- store_api.create_run(store, run_id, definition, input, workflow_source),
-             :ok <- log_workflow_source(log, definition, workflow_source),
-             {:ok, pid} <-
-               Runtime.start_link(%{
-                 definition: definition,
-                 input: Hancho.Log.Event.normalize(input),
-                 run_id: run_id,
-                 store: store,
-                 store_api: store_api,
-                 registry: Keyword.get(options, :registry, Hancho.Workflow.Registry),
-                 executor: Keyword.get(options, :executor, Hancho.Workflow.Executor),
-                 services: Keyword.get(options, :services, %{}),
-                 verbose: Keyword.get(options, :verbose, false),
-                 log: log
-               }) do
-          result = Runtime.run(pid)
-          {:ok, attach_failure_evidence(project, result, options)}
-        end
-      after
-        Hancho.Log.close(log)
+    with_audit_log(project, run_id, options, fn log ->
+      with :ok <- store_api.create_run(store, run_id, definition, input, workflow_source),
+           :ok <- log_workflow_source(log, definition, workflow_source),
+           {:ok, result} <- run_runtime(definition, input, run_id, store, log, options) do
+        {:ok, attach_failure_evidence(project, result, options)}
       end
-    end
+    end)
   end
 
   defp retry_with_store(project, run_id, store, options) do
@@ -113,27 +96,16 @@ defmodule Hancho.Workflow.Runner do
              project,
              outputs,
              Keyword.put(reconcile_options(options), :definition, definition)
-           ),
-         {:ok, log} <- open_log(project, run_id, options) do
-      try do
+           ) do
+      with_audit_log(project, run_id, options, fn log ->
         with :ok <- store_api.retry_run(store, run_id, position),
              :ok <-
                Hancho.Audit.write(log, "Workflow retry started",
                  event: "workflow.retry_started",
                  metadata: %{step: Enum.at(definition.steps, position).name}
                ),
-             {:ok, pid} <-
-               Runtime.start_link(%{
-                 definition: definition,
-                 input: Hancho.Log.Event.normalize(input),
-                 run_id: run_id,
-                 store: store,
-                 store_api: store_api,
-                 registry: Keyword.get(options, :registry, Hancho.Workflow.Registry),
-                 executor: Keyword.get(options, :executor, Hancho.Workflow.Executor),
-                 services: Keyword.get(options, :services, %{}),
-                 verbose: Keyword.get(options, :verbose, false),
-                 log: log,
+             {:ok, result} <-
+               run_runtime(definition, input, run_id, store, log, options, %{
                  index: position,
                  outputs: outputs,
                  artifacts:
@@ -142,11 +114,41 @@ defmodule Hancho.Workflow.Runner do
                    |> put_repairs(repairs),
                  repairs: repairs
                }) do
-          result = Runtime.run(pid)
           {:ok, attach_failure_evidence(project, result, options)}
         end
+      end)
+    end
+  end
+
+  defp run_runtime(definition, input, run_id, store, log, options, resume \\ %{}) do
+    arguments =
+      Map.merge(
+        %{
+          definition: definition,
+          input: Hancho.Log.Event.normalize(input),
+          run_id: run_id,
+          store: store,
+          store_api: Keyword.get(options, :store_api, Store),
+          registry: Keyword.get(options, :registry, Hancho.Workflow.Registry),
+          executor: Keyword.get(options, :executor, Hancho.Workflow.Executor),
+          services: Keyword.get(options, :services, %{}),
+          verbose: Keyword.get(options, :verbose, false),
+          log: log
+        },
+        resume
+      )
+
+    with {:ok, pid} <- Runtime.start_link(arguments) do
+      {:ok, Runtime.run(pid)}
+    end
+  end
+
+  defp with_audit_log(project, run_id, options, function) do
+    with {:ok, log} <- open_log(project, run_id, options) do
+      try do
+        function.(log)
       after
-        Hancho.Log.close(log)
+        Hancho.Audit.close(log)
       end
     end
   end
@@ -161,9 +163,9 @@ defmodule Hancho.Workflow.Runner do
     end
   end
 
-  defp close_store(store_api, store, options) do
+  defp flush_store(store_api, store, options) do
     if Keyword.get(options, :flush_state, true) do
-      store_api.close(store)
+      store_api.flush(store)
     else
       :ok
     end
