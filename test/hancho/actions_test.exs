@@ -99,6 +99,7 @@ defmodule Hancho.ActionsTest do
     def run_with_progress(:grok, _prompt, options, callback) do
       :auto_approve = options[:approval_mode]
       :workspace_write = options[:sandbox_mode]
+      :high = options[:reasoning_effort]
       event_callback = options[:event_callback]
       true = is_function(event_callback, 1)
       500 = options[:event_poll_interval_ms]
@@ -308,6 +309,7 @@ defmodule Hancho.ActionsTest do
                      prompt: "Implement hancho-123",
                      worktree_path: "/repo",
                      provider: "grok",
+                     reasoning_effort: "high",
                      timeout_ms: 1_000,
                      progress_interval_ms: 25
                    },

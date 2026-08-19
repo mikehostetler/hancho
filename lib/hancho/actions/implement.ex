@@ -9,6 +9,7 @@ defmodule Hancho.Actions.Implement do
         prompt: Zoi.string() |> Zoi.min(1),
         worktree_path: Zoi.string() |> Zoi.min(1),
         provider: Zoi.string() |> Zoi.min(1),
+        reasoning_effort: Zoi.enum(["low", "medium", "high"]) |> Zoi.optional(),
         timeout_ms: Zoi.integer() |> Zoi.min(1),
         idle_timeout_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(300_000),
         progress_interval_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(30_000)
@@ -59,6 +60,7 @@ defmodule Hancho.Actions.Implement do
         cwd: params.worktree_path,
         approval_mode: approval_mode(provider),
         sandbox_mode: :workspace_write,
+        reasoning_effort: params |> Map.get(:reasoning_effort) |> reasoning_effort(),
         runtime_timeout_ms: params.timeout_ms,
         idle_timeout_ms: min(params.idle_timeout_ms, params.timeout_ms),
         await_timeout: params.timeout_ms + 60_000,
@@ -83,6 +85,11 @@ defmodule Hancho.Actions.Implement do
   # continues to limit filesystem access.
   defp approval_mode(:grok), do: :auto_approve
   defp approval_mode(_provider), do: :auto_edit
+
+  defp reasoning_effort(nil), do: nil
+  defp reasoning_effort("low"), do: :low
+  defp reasoning_effort("medium"), do: :medium
+  defp reasoning_effort("high"), do: :high
 
   defp progress_callback(context) do
     fn progress ->

@@ -254,6 +254,7 @@ defmodule Hancho.CLI do
     IO.puts("Repository: #{preview.repository.branch} at #{preview.repository.head} (clean)")
     IO.puts("Retained worktrees: #{length(preview.repository.worktrees)}")
     IO.puts("Provider: #{preview.settings.provider || "not configured"}")
+    IO.puts("Reasoning effort: #{preview.settings.reasoning_effort || "not configured"}")
 
     IO.puts(
       "Timeouts: implement #{format_milliseconds(preview.settings.implementation_timeout_ms)}, " <>

@@ -119,6 +119,7 @@ defmodule Hancho.Workflow.QueueRunner do
 
     %{
       provider: step_param(implement, "provider"),
+      reasoning_effort: step_param(implement, "reasoning_effort"),
       implementation_timeout_ms: step_param(implement, "timeout_ms"),
       verification_timeout_ms: step_param(verify, "timeout_ms"),
       repairs:
