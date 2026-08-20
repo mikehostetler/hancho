@@ -15,6 +15,7 @@ defmodule Hancho.Workflow.OnError do
               retry_step: Zoi.string() |> Zoi.min(1),
               timeout_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(600_000),
               idle_timeout_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(300_000),
+              andon_warning_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(120_000),
               progress_interval_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(30_000)
             },
             coerce: true

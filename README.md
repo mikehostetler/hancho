@@ -327,6 +327,13 @@ into the progress event. Set `progress_interval_ms` on the implementation step
 to change the interval. Repair calls use `repair.progress` events and the
 interval in the gate's `on_error` policy.
 
+Hancho also records a warning-level `implement.andon` event when the provider
+has produced no new event for two minutes. New provider activity resets the
+warning, so Hancho emits only one warning for each quiet period. The warning
+does not stop the run. Set `andon_warning_ms` on the implementation step to
+change the threshold. Repair calls use `repair.andon` and the threshold in the
+gate's `on_error` policy. The separate `idle_timeout_ms` remains the stop limit.
+
 Verification writes complete merged standard output to a protected file in
 `.hancho/logs/`. Factory activity contains one `verify.progress` event per 64
 KiB and one `verify.completed` summary. It does not write one factory event for

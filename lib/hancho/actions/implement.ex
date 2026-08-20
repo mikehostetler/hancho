@@ -12,6 +12,7 @@ defmodule Hancho.Actions.Implement do
         reasoning_effort: Zoi.enum(["low", "medium", "high", "xhigh"]) |> Zoi.optional(),
         timeout_ms: Zoi.integer() |> Zoi.min(1),
         idle_timeout_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(300_000),
+        andon_warning_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(120_000),
         progress_interval_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(30_000)
       })
 
@@ -63,6 +64,7 @@ defmodule Hancho.Actions.Implement do
         sandbox_mode: :workspace_write,
         runtime_timeout_ms: params.timeout_ms,
         idle_timeout_ms: min(params.idle_timeout_ms, params.timeout_ms),
+        andon_warning_ms: params.andon_warning_ms,
         await_timeout: params.timeout_ms + 60_000,
         cancellation_timeout_ms: 30_000,
         progress_interval_ms: params.progress_interval_ms,
@@ -101,17 +103,31 @@ defmodule Hancho.Actions.Implement do
   defp progress_callback(context) do
     fn progress ->
       with :ok <- persist_harness_run(context, progress) do
-        {label, event} = activity(context)
-
-        _result =
-          Hancho.Audit.write(context.log, "#{label} progress: #{progress.phase}",
-            event: event,
-            metadata: progress
-          )
-
+        write_progress(context, progress)
         :ok
       end
     end
+  end
+
+  defp write_progress(context, %{phase: :andon} = progress) do
+    {label, event} = andon_activity(context)
+
+    Hancho.Audit.write(
+      context.log,
+      "#{label} Andon: no provider activity for #{andon_duration(progress.inactivity_ms)}",
+      event: event,
+      level: :warning,
+      metadata: progress
+    )
+  end
+
+  defp write_progress(context, progress) do
+    {label, event} = activity(context)
+
+    Hancho.Audit.write(context.log, "#{label} progress: #{progress.phase}",
+      event: event,
+      metadata: progress
+    )
   end
 
   defp prior_harness_run(context) do
@@ -176,6 +192,14 @@ defmodule Hancho.Actions.Implement do
 
   defp activity(%{activity: :repair}), do: {"Repair", "repair.progress"}
   defp activity(_context), do: {"Implementation", "implement.progress"}
+
+  defp andon_activity(%{activity: :repair}), do: {"Repair", "repair.andon"}
+  defp andon_activity(_context), do: {"Implementation", "implement.andon"}
+
+  defp andon_duration(milliseconds) when rem(milliseconds, 1_000) == 0,
+    do: "#{div(milliseconds, 1_000)} seconds"
+
+  defp andon_duration(milliseconds), do: "#{milliseconds} ms"
 
   defp operation_kind(%{activity: :repair}), do: "jido_harness.repair"
   defp operation_kind(_context), do: "jido_harness.run"

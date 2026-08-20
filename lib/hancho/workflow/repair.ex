@@ -92,6 +92,7 @@ defmodule Hancho.Workflow.Repair do
          provider: policy.repair_with,
          timeout_ms: policy.timeout_ms,
          idle_timeout_ms: min(policy.idle_timeout_ms, policy.timeout_ms),
+         andon_warning_ms: policy.andon_warning_ms,
          progress_interval_ms: policy.progress_interval_ms
        }, new_record(step, code, reason, policy.repair_with, prompt, attempt)}
     else

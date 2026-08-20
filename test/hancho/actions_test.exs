@@ -63,6 +63,7 @@ defmodule Hancho.ActionsTest do
   defmodule ProgressHarness do
     def run_with_progress(:codex, _prompt, options, callback) do
       25 = options[:progress_interval_ms]
+      120_000 = options[:andon_warning_ms]
       nil = options[:event_callback]
 
       :ok =
@@ -73,6 +74,18 @@ defmodule Hancho.ActionsTest do
           elapsed_ms: 0,
           event_count: 0,
           last_event: nil
+        })
+
+      :ok =
+        callback.(%{
+          harness_run_id: "harness-progress",
+          provider: :codex,
+          phase: :andon,
+          elapsed_ms: 120_005,
+          inactivity_ms: 120_000,
+          andon_warning_ms: 120_000,
+          event_count: 3,
+          last_event: :thinking_delta
         })
 
       :ok =
@@ -298,6 +311,19 @@ defmodule Hancho.ActionsTest do
     assert Enum.map(events, & &1["metadata"]["phase"]) == ["started", "completed"]
     assert List.last(events)["metadata"]["last_event"] == "run_completed"
     refute Enum.any?(events, &Map.has_key?(&1["metadata"], "text"))
+
+    [andon] =
+      project
+      |> then(&Path.join(&1.logs_path, "factory.jsonl"))
+      |> File.stream!()
+      |> Enum.map(&Jason.decode!/1)
+      |> Enum.filter(&(&1["event"] == "implement.andon"))
+
+    assert andon["level"] == "warning"
+    assert andon["metadata"]["inactivity_ms"] == 120_000
+
+    assert andon["message"] ==
+             "Implementation Andon: no provider activity for 120 seconds"
   end
 
   test "prints safe normalized provider events in verbose mode" do

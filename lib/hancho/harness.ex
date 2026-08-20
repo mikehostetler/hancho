@@ -2,6 +2,7 @@ defmodule Hancho.Harness do
   @moduledoc false
 
   @default_progress_interval_ms 30_000
+  @default_andon_warning_ms 120_000
   @default_event_poll_interval_ms 500
   @default_cancellation_timeout_ms 30_000
 
@@ -28,6 +29,9 @@ defmodule Hancho.Harness do
     await_timeout = Keyword.get(options, :await_timeout, :infinity)
     interval = Keyword.get(options, :progress_interval_ms, @default_progress_interval_ms)
 
+    andon_warning_ms =
+      Keyword.get(options, :andon_warning_ms, @default_andon_warning_ms)
+
     cancellation_timeout =
       Keyword.get(options, :cancellation_timeout_ms, @default_cancellation_timeout_ms)
 
@@ -43,6 +47,7 @@ defmodule Hancho.Harness do
       Keyword.drop(options, [
         :await_timeout,
         :progress_interval_ms,
+        :andon_warning_ms,
         :cancellation_timeout_ms,
         :resume_run_id,
         :resume_cursor,
@@ -65,7 +70,8 @@ defmodule Hancho.Harness do
                  resume_cursor,
                  callback,
                  event_callback,
-                 event_poll_interval
+                 event_poll_interval,
+                 andon_warning_ms
                ) do
           {:ok, result}
         end
@@ -117,7 +123,8 @@ defmodule Hancho.Harness do
          cursor,
          callback,
          event_callback,
-         event_poll_interval
+         event_poll_interval,
+         andon_warning_ms
        ) do
     started_at = System.monotonic_time(:millisecond)
     deadline = deadline(started_at, timeout)
@@ -136,7 +143,10 @@ defmodule Hancho.Harness do
       cursor,
       nil,
       callback,
-      event_callback
+      event_callback,
+      andon_warning_ms,
+      started_at,
+      false
     )
   end
 
@@ -151,7 +161,10 @@ defmodule Hancho.Harness do
          cursor,
          latest,
          callback,
-         event_callback
+         event_callback,
+         andon_warning_ms,
+         last_activity_at,
+         andon_warned?
        ) do
     wait = wait_time(deadline, poll_interval)
 
@@ -175,7 +188,25 @@ defmodule Hancho.Harness do
           {next_cursor, latest, events} = replay(run_id, cursor, latest)
           now = now()
 
+          {last_activity_at, andon_warned?} =
+            activity_state(events, now, last_activity_at, andon_warned?)
+
+          warn? =
+            not andon_warned? and now - last_activity_at >= andon_warning_ms
+
           with :ok <- notify_events(event_callback, events),
+               :ok <-
+                 maybe_notify_andon(
+                   callback,
+                   warn?,
+                   run_id,
+                   provider,
+                   started_at,
+                   next_cursor,
+                   latest,
+                   now - last_activity_at,
+                   andon_warning_ms
+                 ),
                :ok <-
                  maybe_notify_progress(
                    callback,
@@ -198,7 +229,10 @@ defmodule Hancho.Harness do
               next_cursor,
               latest,
               callback,
-              event_callback
+              event_callback,
+              andon_warning_ms,
+              last_activity_at,
+              andon_warned? or warn?
             )
           end
         end
@@ -254,6 +288,47 @@ defmodule Hancho.Harness do
       {:ok, events} -> {List.last(events).sequence, List.last(events), events}
       {:error, _reason} -> {cursor, latest, []}
     end
+  end
+
+  defp activity_state([], _now, last_activity_at, andon_warned?),
+    do: {last_activity_at, andon_warned?}
+
+  defp activity_state(_events, now, _last_activity_at, _andon_warned?),
+    do: {now, false}
+
+  defp maybe_notify_andon(
+         _callback,
+         false,
+         _run_id,
+         _provider,
+         _started_at,
+         _cursor,
+         _latest,
+         _inactivity_ms,
+         _andon_warning_ms
+       ),
+       do: :ok
+
+  defp maybe_notify_andon(
+         callback,
+         true,
+         run_id,
+         provider,
+         started_at,
+         cursor,
+         latest,
+         inactivity_ms,
+         andon_warning_ms
+       ) do
+    details = %{
+      inactivity_ms: inactivity_ms,
+      andon_warning_ms: andon_warning_ms
+    }
+
+    callback
+    |> notify(
+      Map.merge(progress(run_id, provider, :andon, elapsed(started_at), cursor, latest), details)
+    )
   end
 
   defp maybe_notify_progress(
