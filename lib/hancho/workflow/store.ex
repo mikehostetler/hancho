@@ -6,6 +6,8 @@ defmodule Hancho.Workflow.Store do
 
   alias Hancho.Workflow.{
     EffectRecord,
+    HandoffRecord,
+    AttentionRecord,
     QueueRecord,
     RecordRange,
     Repair,
@@ -17,6 +19,8 @@ defmodule Hancho.Workflow.Store do
   @prefix "hancho/workflow/runs/"
   @queue_prefix "hancho/workflow/queues/"
   @active_queue_key "hancho/workflow/queues/active"
+  @handoff_prefix "hancho/collaboration/handoffs/"
+  @attention_prefix "hancho/collaboration/attention/"
 
   @spec open(String.t()) :: {:ok, String.t()} | {:error, term()}
   def open(path) do
@@ -644,6 +648,230 @@ defmodule Hancho.Workflow.Store do
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
+  end
+
+  @spec create_handoff(String.t(), String.t(), map(), keyword()) :: :ok | {:error, term()}
+  def create_handoff(store, run_id, attributes, _options \\ []) do
+    id = run_id <> ":" <> to_string(attributes.from_step) <> ":" <> to_string(attributes.to_step)
+
+    transact(store, fn ->
+      key = @handoff_prefix <> encoded_id(id)
+
+      if Repo.get(key) do
+        :ok
+      else
+        put_record(
+          key,
+          %{
+            "record_version" => 1,
+            "transition_version" => 0,
+            "id" => id,
+            "run_id" => run_id,
+            "from_role" => to_string(attributes.from_role),
+            "to_role" => to_string(attributes.to_role),
+            "from_step" => to_string(attributes.from_step),
+            "to_step" => to_string(attributes.to_step),
+            "artifact" => attributes.artifact,
+            "payload_json" => encode!(attributes.payload),
+            "status" => "ready",
+            "created_at" => now(),
+            "accepted_at" => nil,
+            "completed_at" => nil
+          },
+          HandoffRecord
+        )
+      end
+    end)
+  end
+
+  @spec list_handoffs(String.t()) :: {:ok, [map()]} | {:error, term()}
+  def list_handoffs(store), do: list_records(store, @handoff_prefix, HandoffRecord)
+
+  @spec accept_handoff(String.t(), String.t(), String.t()) :: :ok | {:error, term()}
+  def accept_handoff(store, run_id, to_step) do
+    update_handoff(store, run_id, to_step, fn
+      %{"status" => "ready"} = record ->
+        record |> Map.put("status", "accepted") |> Map.put("accepted_at", now())
+
+      %{"status" => status} when status in ["accepted", "completed"] ->
+        :unchanged
+
+      _record ->
+        {:error, :handoff_not_acceptable}
+    end)
+  end
+
+  @spec complete_handoff(String.t(), String.t(), String.t()) :: :ok | {:error, term()}
+  def complete_handoff(store, run_id, to_step) do
+    update_handoff(store, run_id, to_step, fn
+      %{"status" => "accepted"} = record ->
+        record |> Map.put("status", "completed") |> Map.put("completed_at", now())
+
+      %{"status" => "completed"} ->
+        :unchanged
+
+      _record ->
+        {:error, :handoff_not_completable}
+    end)
+  end
+
+  @spec request_attention(String.t(), map()) :: {:ok, map()} | {:error, term()}
+  def request_attention(store, attributes) do
+    id = attributes.id
+
+    transact(store, fn ->
+      key = @attention_prefix <> encoded_id(id)
+
+      case Repo.get(key) do
+        nil ->
+          record = %{
+            "record_version" => 1,
+            "transition_version" => 0,
+            "id" => id,
+            "run_id" => attributes.run_id,
+            "step" => attributes.step,
+            "role" => Map.get(attributes, :role),
+            "kind" => attributes.kind,
+            "title" => attributes.title,
+            "body" => attributes.body,
+            "status" => "pending",
+            "response" => nil,
+            "created_at" => now(),
+            "resolved_at" => nil
+          }
+
+          put_record(key, record, AttentionRecord)
+          {:ok, record}
+
+        encoded ->
+          decode_record(encoded, AttentionRecord)
+      end
+    end)
+  end
+
+  @spec resolve_attention(String.t(), String.t(), String.t(), String.t() | nil) ::
+          {:ok, map()} | {:error, term()}
+  def resolve_attention(store, id, status, response \\ nil)
+      when status in ["approved", "rejected", "answered"] do
+    transact(store, fn ->
+      key = @attention_prefix <> encoded_id(id)
+
+      with {:ok, record} <- get_record(key, AttentionRecord),
+           true <- record["status"] == "pending" || Repo.rollback(:attention_already_resolved) do
+        updated =
+          record
+          |> Map.put("status", status)
+          |> Map.put("response", response)
+          |> Map.put("resolved_at", now())
+          |> bump()
+
+        put_record(key, updated, AttentionRecord)
+        {:ok, updated}
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @spec fetch_attention(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def fetch_attention(store, id) do
+    transact(store, fn ->
+      case get_record(@attention_prefix <> encoded_id(id), AttentionRecord) do
+        {:ok, record} -> {:ok, record}
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @spec list_attention(String.t()) :: {:ok, [map()]} | {:error, term()}
+  def list_attention(store), do: list_records(store, @attention_prefix, AttentionRecord)
+
+  @spec list_runs(String.t()) :: {:ok, [map()]} | {:error, term()}
+  def list_runs(store) do
+    transact(store, fn ->
+      @prefix
+      |> Elixir.Bedrock.KeyRange.from_prefix()
+      |> Repo.get_range()
+      |> Enum.reduce_while({:ok, []}, fn {key, value}, {:ok, records} ->
+        if String.ends_with?(key, "/run") do
+          case decode_record(value, RunRecord) do
+            {:ok, record} -> {:cont, {:ok, [record | records]}}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+        else
+          {:cont, {:ok, records}}
+        end
+      end)
+      |> case do
+        {:ok, records} -> {:ok, Enum.reverse(records)}
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @spec list_queues(String.t()) :: {:ok, [map()]} | {:error, term()}
+  def list_queues(store) do
+    transact(store, fn ->
+      @queue_prefix
+      |> Elixir.Bedrock.KeyRange.from_prefix()
+      |> Repo.get_range()
+      |> Enum.reduce_while({:ok, []}, fn {key, value}, {:ok, records} ->
+        if String.ends_with?(key, "/queue") do
+          case decode_record(value, QueueRecord) do
+            {:ok, record} -> {:cont, {:ok, [record | records]}}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+        else
+          {:cont, {:ok, records}}
+        end
+      end)
+      |> case do
+        {:ok, records} -> {:ok, Enum.reverse(records)}
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  defp list_records(store, prefix, module) do
+    transact(store, fn ->
+      case read_records(prefix, module) do
+        {:ok, records} -> {:ok, records}
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  defp update_handoff(store, run_id, to_step, transition) do
+    transact(store, fn ->
+      with {:ok, handoffs} <- read_records(@handoff_prefix, HandoffRecord),
+           record when is_map(record) <-
+             Enum.find(handoffs, &(&1["run_id"] == run_id and &1["to_step"] == to_step)) ||
+               Repo.rollback(:handoff_not_found) do
+        case transition.(record) do
+          :unchanged ->
+            :ok
+
+          {:error, reason} ->
+            Repo.rollback(reason)
+
+          updated ->
+            put_record(
+              @handoff_prefix <> encoded_id(record["id"]),
+              bump(updated),
+              HandoffRecord
+            )
+        end
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  defp read_records(prefix, module) do
+    prefix
+    |> Elixir.Bedrock.KeyRange.from_prefix()
+    |> Repo.get_range()
+    |> RecordRange.decode_prefix(prefix, &decode_record(&1, module))
   end
 
   defp update_repair(store, run_id, position, attempt, function) do

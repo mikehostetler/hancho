@@ -14,6 +14,7 @@ CLI
   -> factory lease
   -> workflow runner or queue runner
   -> sequential workflow runtime
+  -> role defaults and typed artifact contract
   -> validated action
   -> Git, Beadwork, Harness, or filesystem effect
 
@@ -38,7 +39,7 @@ saved order. It owns queue recovery, repository checks at child boundaries,
 progress reports, and queue forensics.
 
 `Hancho.Workflow.Store` is the transaction boundary for run, step, effect,
-repair, and queue records. `Hancho.State.Bedrock` starts the local Bedrock
+repair, queue, role handoff, and human attention records. `Hancho.State.Bedrock` starts the local Bedrock
 cluster and implements the durability barrier.
 
 ## State ownership
@@ -49,6 +50,8 @@ cluster and implements the durability barrier.
 | Active durable queue | Queue store | Bedrock active-queue key |
 | Run and step lifecycle | Workflow runtime | Bedrock run and step records |
 | External operation lifecycle | Effect module | Bedrock intent and receipt records |
+| Role-to-role work | Workflow runtime | Bedrock handoff records |
+| Human decisions and answers | Attention action and cockpit | Bedrock attention records |
 | Git and worktree state | Git and filesystem | Reconciled with saved expectations |
 | Human-readable history | Audit and reporter modules | JSONL log and forensic reports |
 
@@ -75,6 +78,10 @@ shows whether a running item started its child workflow. This avoids a second
 
 - One workflow step runs at a time.
 - One queue child runs at a time.
+- Role handoffs do not enable parallel execution.
+- A typed artifact is valid before it becomes available to a later step.
+- Role prompt files are embedded in the durable workflow snapshot.
+- Serial worktrees can share only repository-local, content-keyed Mix caches.
 - A successful transition is durable before the next external effect starts.
 - A read-only inspection does not write a durability marker.
 - Factory-created commits do not use interactive GPG signing.

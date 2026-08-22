@@ -25,11 +25,14 @@ defmodule Hancho.Workflow.Artifacts do
   def from_outputs(definition, outputs) do
     Enum.reduce(definition.steps, %{}, fn step, artifacts ->
       case Map.fetch(outputs, step.name) do
-        {:ok, result} -> put(artifacts, step.action, result)
+        {:ok, result} -> artifacts |> put(step.action, result) |> put_typed(step, result)
         :error -> artifacts
       end
     end)
   end
+
+  defp put_typed(artifacts, %{produces: nil}, _result), do: artifacts
+  defp put_typed(artifacts, step, result), do: Map.put(artifacts, step.produces, result)
 
   @spec from_steps([map()], map()) :: map()
   def from_steps(steps, outputs) do

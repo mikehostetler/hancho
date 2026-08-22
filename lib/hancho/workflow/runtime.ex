@@ -47,6 +47,7 @@ defmodule Hancho.Workflow.Runtime do
     step = Enum.at(data.definition.steps, data.index)
 
     with :ok <- data.store_api.start_step(data.store, data.run_id, data.index, step, step.params),
+         :ok <- accept_incoming_handoff(data, step),
          :ok <- audit(data, "Step started: #{step.name}", "workflow.step_started", step) do
       execute_step(data, step)
     else
@@ -64,9 +65,15 @@ defmodule Hancho.Workflow.Runtime do
   end
 
   defp execute_step(data, step) do
-    scope = %{"input" => data.input, "steps" => data.outputs, "run" => %{"id" => data.run_id}}
+    scope = %{
+      "input" => data.input,
+      "steps" => data.outputs,
+      "artifacts" => data.artifacts,
+      "run" => %{"id" => data.run_id}
+    }
 
     with {:ok, params} <- Params.resolve(step.params, scope),
+         params <- Hancho.Workflow.RoleResolver.params(data.definition, %{step | params: params}),
          {:ok, action} <- data.registry.fetch(step.action) do
       execute_action(data, step, action, params)
     else
@@ -87,17 +94,77 @@ defmodule Hancho.Workflow.Runtime do
     outputs = Map.put(data.outputs, step.name, result)
     repairs = Repair.recover_open(data.repairs, step.name)
 
-    artifacts =
-      data.artifacts
-      |> Artifacts.put(step.action, result)
-      |> put_repairs(repairs)
+    with {:ok, artifacts} <- typed_artifact(data, step, result) do
+      artifacts =
+        artifacts
+        |> Artifacts.put(step.action, result)
+        |> put_repairs(repairs)
 
-    with :ok <- recover_open_repairs(data),
-         :ok <- data.store_api.complete_step(data.store, data.run_id, data.index, result, outputs) do
-      audit(data, "Step completed: #{step.name}", "workflow.step_completed", step)
-      advance(%{data | outputs: outputs, artifacts: artifacts, repairs: repairs})
+      with :ok <- recover_open_repairs(data),
+           :ok <- complete_incoming_handoff(data, step),
+           :ok <- record_handoff(data, step, result),
+           :ok <-
+             data.store_api.complete_step(data.store, data.run_id, data.index, result, outputs) do
+        audit(data, "Step completed: #{step.name}", "workflow.step_completed", step)
+        advance(%{data | outputs: outputs, artifacts: artifacts, repairs: repairs})
+      else
+        {:error, reason} -> stop(%{data | repairs: repairs, artifacts: artifacts}, step, reason)
+      end
     else
-      {:error, reason} -> stop(%{data | repairs: repairs, artifacts: artifacts}, step, reason)
+      {:error, reason} -> handle_failure(data, step, %{}, reason)
+    end
+  end
+
+  defp typed_artifact(data, %{produces: nil}, _result), do: {:ok, data.artifacts}
+
+  defp typed_artifact(data, step, result) do
+    spec = Map.fetch!(data.definition.artifacts, step.produces)
+
+    case Hancho.Workflow.ArtifactSpec.validate(spec, result) do
+      :ok -> {:ok, Map.put(data.artifacts, step.produces, result)}
+      {:error, reason} -> {:error, {:artifact_validation_failed, step.produces, reason}}
+    end
+  end
+
+  defp record_handoff(_data, %{role: nil}, _result), do: :ok
+
+  defp record_handoff(data, step, result) do
+    next = Enum.at(data.definition.steps, data.index + 1)
+
+    if next && next.role && next.role != step.role &&
+         function_exported?(data.store_api, :create_handoff, 3) do
+      data.store_api.create_handoff(data.store, data.run_id, %{
+        from_role: step.role,
+        to_role: next.role,
+        from_step: step.name,
+        to_step: next.name,
+        artifact: step.produces,
+        payload: result
+      })
+    else
+      :ok
+    end
+  end
+
+  defp accept_incoming_handoff(data, step) do
+    previous = Enum.at(data.definition.steps, data.index - 1)
+
+    if data.index > 0 && previous.role && step.role && previous.role != step.role &&
+         function_exported?(data.store_api, :accept_handoff, 3) do
+      data.store_api.accept_handoff(data.store, data.run_id, step.name)
+    else
+      :ok
+    end
+  end
+
+  defp complete_incoming_handoff(data, step) do
+    previous = Enum.at(data.definition.steps, data.index - 1)
+
+    if data.index > 0 && previous.role && step.role && previous.role != step.role &&
+         function_exported?(data.store_api, :complete_handoff, 3) do
+      data.store_api.complete_handoff(data.store, data.run_id, step.name)
+    else
+      :ok
     end
   end
 
@@ -284,6 +351,7 @@ defmodule Hancho.Workflow.Runtime do
       run_id: data.run_id,
       step: step.name,
       activity: activity,
+      role: step.role,
       log: data.log,
       verbose: data.verbose,
       artifacts: data.artifacts,

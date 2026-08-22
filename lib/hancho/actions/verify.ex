@@ -33,6 +33,7 @@ defmodule Hancho.Actions.Verify do
         result =
           command.run(executable, params.arguments,
             cwd: params.worktree_path,
+            env: Hancho.WorktreeCache.environment(params.worktree_path) |> Map.to_list(),
             timeout: params.timeout_ms,
             capture_limit: 20_000,
             stderr_to_stdout: true,

@@ -8,6 +8,9 @@ defmodule Hancho.Workflow.Step do
             %{
               name: Zoi.string() |> Zoi.min(1),
               action: Zoi.string() |> Zoi.min(1),
+              role: Zoi.string() |> Zoi.min(1) |> Zoi.nullish() |> Zoi.default(nil),
+              consumes: Zoi.array(Zoi.string()) |> Zoi.default([]),
+              produces: Zoi.string() |> Zoi.min(1) |> Zoi.nullish() |> Zoi.default(nil),
               params: Zoi.map() |> Zoi.default(%{}),
               on_error: OnError.schema() |> Zoi.nullish() |> Zoi.default(nil)
             },
@@ -23,4 +26,16 @@ defmodule Hancho.Workflow.Step do
 
   @spec new(map()) :: {:ok, t()} | {:error, term()}
   def new(attributes), do: Zoi.parse(@schema, attributes)
+
+  @spec to_map(t()) :: map()
+  def to_map(%__MODULE__{} = step) do
+    step
+    |> Map.from_struct()
+    |> Map.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.update(:on_error, nil, fn
+      nil -> nil
+      policy -> Map.from_struct(policy)
+    end)
+    |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
+  end
 end

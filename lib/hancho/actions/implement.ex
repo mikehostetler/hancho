@@ -9,6 +9,9 @@ defmodule Hancho.Actions.Implement do
         prompt: Zoi.string() |> Zoi.min(1),
         worktree_path: Zoi.string() |> Zoi.min(1),
         provider: Zoi.string() |> Zoi.min(1),
+        cli: Zoi.string() |> Zoi.min(1) |> Zoi.optional(),
+        model: Zoi.string() |> Zoi.min(1) |> Zoi.optional(),
+        extra_args: Zoi.array(Zoi.string()) |> Zoi.default([]),
         reasoning_effort: Zoi.enum(["low", "medium", "high", "xhigh"]) |> Zoi.optional(),
         timeout_ms: Zoi.integer() |> Zoi.min(1),
         idle_timeout_ms: Zoi.integer() |> Zoi.min(1) |> Zoi.default(300_000),
@@ -36,12 +39,14 @@ defmodule Hancho.Actions.Implement do
     harness = Context.service(context, :harness, Hancho.Harness)
 
     with {:ok, provider} <- fetch_provider(params.provider),
+         :ok <- validate_reasoning(provider, Map.get(params, :reasoning_effort)),
          {:ok, prior_run} <- prior_harness_run(context),
          {:ok, result} <- run_harness(harness, provider, params, prior_run, context),
          :ok <- completed(result) do
       {:ok,
        %{
          provider: params.provider,
+         model: Map.get(params, :model),
          harness_run_id: result.run_id,
          status: result.status,
          text: tail(result.text, 20_000),
@@ -56,10 +61,13 @@ defmodule Hancho.Actions.Implement do
   defp run_harness(harness, provider, params, prior_run, context) do
     repository = repository_from_worktree(params.worktree_path)
     reasoning_options = reasoning_options(provider, Map.get(params, :reasoning_effort))
+    provider_options = provider_options(params, reasoning_options)
 
     options =
       [
         cwd: params.worktree_path,
+        model: Map.get(params, :model),
+        env: Hancho.WorktreeCache.environment(params.worktree_path),
         approval_mode: approval_mode(provider),
         sandbox_mode: :workspace_write,
         runtime_timeout_ms: params.timeout_ms,
@@ -72,7 +80,8 @@ defmodule Hancho.Actions.Implement do
         resume_run_id: prior_run_id(prior_run),
         resume_cursor: prior_cursor(prior_run)
       ]
-      |> Keyword.merge(reasoning_options)
+      |> Keyword.merge(Keyword.drop(reasoning_options, [:provider_options]))
+      |> Keyword.put(:provider_options, provider_options)
       |> verbose_event_options(context)
 
     if Code.ensure_loaded?(harness) and function_exported?(harness, :run_with_progress, 4) do
@@ -99,6 +108,27 @@ defmodule Hancho.Actions.Implement do
   defp reasoning_options(_provider, "low"), do: [reasoning_effort: :low]
   defp reasoning_options(_provider, "medium"), do: [reasoning_effort: :medium]
   defp reasoning_options(_provider, "high"), do: [reasoning_effort: :high]
+
+  defp validate_reasoning(:grok, "xhigh"), do: :ok
+
+  defp validate_reasoning(_provider, "xhigh"),
+    do: {:error, "The selected Harness provider does not support xhigh reasoning."}
+
+  defp validate_reasoning(_provider, _effort), do: :ok
+
+  defp provider_options(params, reasoning_options) do
+    base =
+      %{}
+      |> maybe_put(:cli_path, Map.get(params, :cli))
+      |> maybe_put(:extra_args, nonempty(Map.get(params, :extra_args)))
+
+    Map.merge(base, Keyword.get(reasoning_options, :provider_options, %{}))
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+  defp nonempty([]), do: nil
+  defp nonempty(value), do: value
 
   defp progress_callback(context) do
     fn progress ->

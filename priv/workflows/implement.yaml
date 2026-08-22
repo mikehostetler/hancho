@@ -1,5 +1,29 @@
 name: implement
 version: 1
+roles:
+  implementer:
+    provider: codex
+    prompt: |
+      You are the implementation role. Make the smallest complete change and preserve repository rules.
+  verifier:
+    provider: codex
+    prompt: |
+      You are the verification role. Require clear evidence before work can continue.
+artifacts:
+  implementation_result:
+    type: object
+    required:
+      - status
+      - harness_run_id
+    properties:
+      status: string
+      harness_run_id: string
+  verification_result:
+    type: object
+    required:
+      - exit_status
+    properties:
+      exit_status: integer
 steps:
   - name: preflight
     action: Hancho.Actions.Preflight
@@ -25,16 +49,20 @@ steps:
       context:
         issue: "$steps.claim.issue"
   - name: implement
+    role: implementer
+    produces: implementation_result
     action: Hancho.Actions.Implement
     params:
       prompt: "$steps.render_prompt.rendered"
       worktree_path: "$steps.create_worktree.worktree_path"
-      provider: codex
       timeout_ms: 1800000
       idle_timeout_ms: 300000
       andon_warning_ms: 120000
       progress_interval_ms: 30000
   - name: validate_scope
+    role: verifier
+    consumes:
+      - implementation_result
     action: Hancho.Actions.ValidateScope
     params:
       worktree_path: "$steps.create_worktree.worktree_path"
@@ -46,6 +74,8 @@ steps:
       max_attempts: 1
       retry_step: validate_scope
   - name: verify
+    role: verifier
+    produces: verification_result
     action: Hancho.Actions.Verify
     params:
       repo_path: "$steps.preflight.repo_path"

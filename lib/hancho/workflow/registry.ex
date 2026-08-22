@@ -7,6 +7,7 @@ defmodule Hancho.Workflow.Registry do
     "Hancho.Actions.CreateWorktree" => Hancho.Actions.CreateWorktree,
     "Hancho.Actions.UseRepository" => Hancho.Actions.UseRepository,
     "Hancho.Actions.RenderPrompt" => Hancho.Actions.RenderPrompt,
+    "Hancho.Actions.RequestAttention" => Hancho.Actions.RequestAttention,
     "Hancho.Actions.Implement" => Hancho.Actions.Implement,
     "Hancho.Actions.ValidateScope" => Hancho.Actions.ValidateScope,
     "Hancho.Actions.Verify" => Hancho.Actions.Verify,

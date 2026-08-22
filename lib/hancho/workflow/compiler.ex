@@ -9,7 +9,7 @@ defmodule Hancho.Workflow.Compiler do
     registry = Keyword.get(options, :registry, Hancho.Workflow.Registry)
 
     with :ok <- validate_references(definition.steps, input),
-         {:ok, steps} <- compile_steps(project, definition.steps, registry, options),
+         {:ok, steps} <- compile_steps(project, definition, registry, options),
          :ok <- validate_workspace_contract(definition.steps),
          :ok <- validate_repair_contract(definition.steps) do
       {:ok,
@@ -79,13 +79,15 @@ defmodule Hancho.Workflow.Compiler do
     end
   end
 
-  defp compile_steps(project, steps, registry, options) do
-    steps
+  defp compile_steps(project, definition, registry, options) do
+    definition.steps
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, []}, fn {step, position}, {:ok, compiled} ->
+      params = Hancho.Workflow.RoleResolver.params(definition, step)
+
       with {:ok, action} <- registry.fetch(step.action),
-           :ok <- validate_action_params(action, step.params),
-           {:ok, environment} <- validate_environment(project, action, step.params, options),
+           :ok <- validate_action_params(action, params),
+           {:ok, environment} <- validate_environment(project, action, params, options),
            {:ok, repair_environment} <- validate_repair_environment(step, options) do
         summary = %{
           position: position,
@@ -176,8 +178,9 @@ defmodule Hancho.Workflow.Compiler do
   defp do_validate_environment(_project, Hancho.Actions.Implement, params, options) do
     with {:ok, provider_name} <- literal_param(params, "provider"),
          {:ok, provider} <- Hancho.Actions.Implement.provider(provider_name),
-         :ok <- provider_ready(provider, options) do
-      {:ok, %{provider: provider_name}}
+         {:ok, cli} <- optional_literal_param(params, "cli"),
+         :ok <- provider_environment(provider, cli, options) do
+      {:ok, %{provider: provider_name, cli: cli}}
     end
   end
 
@@ -227,6 +230,15 @@ defmodule Hancho.Workflow.Compiler do
     end
   end
 
+  defp provider_environment(_provider, cli, _options) when is_binary(cli) do
+    case executable_path(cli) do
+      {:ok, _path} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp provider_environment(provider, nil, options), do: provider_ready(provider, options)
+
   defp validate_prompt_file(project, prompt_file) do
     base = Path.join(project.hancho_dir, "prompts")
 
@@ -240,42 +252,48 @@ defmodule Hancho.Workflow.Compiler do
 
   defp validate_references(steps, input) do
     steps
-    |> Enum.reduce_while({:ok, MapSet.new()}, fn step, {:ok, prior} ->
-      case validate_param_references(step.params, input, prior) do
-        :ok -> {:cont, {:ok, MapSet.put(prior, step.name)}}
-        {:error, reason} -> {:halt, {:error, {:workflow_compile_failed, step.name, reason}}}
+    |> Enum.reduce_while({:ok, MapSet.new(), MapSet.new()}, fn step, {:ok, prior, artifacts} ->
+      case validate_param_references(step.params, input, prior, artifacts) do
+        :ok ->
+          artifacts = if step.produces, do: MapSet.put(artifacts, step.produces), else: artifacts
+          {:cont, {:ok, MapSet.put(prior, step.name), artifacts}}
+
+        {:error, reason} ->
+          {:halt, {:error, {:workflow_compile_failed, step.name, reason}}}
       end
     end)
     |> case do
-      {:ok, _prior} -> :ok
+      {:ok, _prior, _artifacts} -> :ok
       error -> error
     end
   end
 
-  defp validate_param_references(value, input, prior) when is_binary(value) do
-    if String.starts_with?(value, "$"), do: validate_reference(value, input, prior), else: :ok
+  defp validate_param_references(value, input, prior, artifacts) when is_binary(value) do
+    if String.starts_with?(value, "$"),
+      do: validate_reference(value, input, prior, artifacts),
+      else: :ok
   end
 
-  defp validate_param_references(values, input, prior) when is_list(values) do
-    reduce_references(values, input, prior)
+  defp validate_param_references(values, input, prior, artifacts) when is_list(values) do
+    reduce_references(values, input, prior, artifacts)
   end
 
-  defp validate_param_references(values, input, prior) when is_map(values) do
-    values |> Map.values() |> reduce_references(input, prior)
+  defp validate_param_references(values, input, prior, artifacts) when is_map(values) do
+    values |> Map.values() |> reduce_references(input, prior, artifacts)
   end
 
-  defp validate_param_references(_value, _input, _prior), do: :ok
+  defp validate_param_references(_value, _input, _prior, _artifacts), do: :ok
 
-  defp reduce_references(values, input, prior) do
+  defp reduce_references(values, input, prior, artifacts) do
     Enum.reduce_while(values, :ok, fn value, :ok ->
-      case validate_param_references(value, input, prior) do
+      case validate_param_references(value, input, prior, artifacts) do
         :ok -> {:cont, :ok}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
 
-  defp validate_reference(reference, input, prior) do
+  defp validate_reference(reference, input, prior, artifacts) do
     path = reference |> String.trim_leading("$") |> String.split(".")
 
     case path do
@@ -289,6 +307,11 @@ defmodule Hancho.Workflow.Compiler do
         if MapSet.member?(prior, name),
           do: :ok,
           else: {:error, {:unavailable_step_reference, reference}}
+
+      ["artifacts", name | rest] when rest != [] ->
+        if MapSet.member?(artifacts, name),
+          do: :ok,
+          else: {:error, {:unavailable_artifact_reference, reference}}
 
       _other ->
         {:error, {:invalid_parameter_reference, reference}}
@@ -335,6 +358,21 @@ defmodule Hancho.Workflow.Compiler do
 
       _value ->
         {:error, {:missing_compile_param, key}}
+    end
+  end
+
+  defp optional_literal_param(params, key) do
+    case param(params, key) do
+      nil ->
+        {:ok, nil}
+
+      value when is_binary(value) ->
+        if contains_reference?(value),
+          do: {:error, {:dynamic_compile_param, key}},
+          else: {:ok, value}
+
+      _value ->
+        {:error, {:invalid_compile_param, key}}
     end
   end
 

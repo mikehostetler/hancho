@@ -21,6 +21,14 @@ defmodule Hancho.CLI do
                       Inspect one retained worktree
     hancho worktrees clean RUN_ID
                       Remove generated artifacts from one retained worktree
+    hancho attention list
+                      List durable human decisions and questions
+    hancho attention approve ID [--response TEXT]
+    hancho attention reject ID [--response TEXT]
+    hancho attention answer ID --response TEXT
+                      Resolve one attention record
+    hancho cockpit [--port N]
+                      Start the local Hancho cockpit
     hancho queue WORKFLOW --source beadwork-ready --count N [--dry-run] [--verbose]
                       Run ready Beadwork tasks serially in the foreground
     hancho --version  Print the Hancho version
@@ -33,7 +41,9 @@ defmodule Hancho.CLI do
     source: :string,
     count: :integer,
     verbose: :boolean,
-    dry_run: :boolean
+    dry_run: :boolean,
+    response: :string,
+    port: :integer
   ]
   @aliases [h: :help, v: :version]
 
@@ -192,6 +202,56 @@ defmodule Hancho.CLI do
       0
     else
       {:error, reason} -> command_error(reason)
+    end
+  end
+
+  defp dispatch_command(["attention", "list"], [], options) do
+    with {:ok, project} <- discover_project(options),
+         {:ok, store} <- Hancho.Workflow.Store.open(project.bedrock_path),
+         {:ok, records} <- Hancho.Workflow.Store.list_attention(store) do
+      Enum.each(records, fn record ->
+        IO.puts("#{record["id"]}: #{record["kind"]} #{record["status"]} — #{record["title"]}")
+      end)
+
+      0
+    else
+      {:error, reason} -> command_error(reason)
+    end
+  end
+
+  defp dispatch_command(["attention", action, id], parsed, options)
+       when action in ["approve", "reject", "answer"] do
+    response = parsed[:response]
+
+    if action == "answer" and not is_binary(response) do
+      IO.puts(:stderr, "ERROR: attention answer requires --response.")
+      2
+    else
+      status = %{"approve" => "approved", "reject" => "rejected", "answer" => "answered"}[action]
+
+      with {:ok, project} <- discover_project(options),
+           {:ok, store} <- Hancho.Workflow.Store.open(project.bedrock_path),
+           {:ok, record} <- Hancho.Workflow.Store.resolve_attention(store, id, status, response),
+           :ok <- Hancho.Workflow.Store.flush(store) do
+        IO.puts("Attention #{record["id"]}: #{record["status"]}")
+        0
+      else
+        {:error, reason} -> command_error(reason)
+      end
+    end
+  end
+
+  defp dispatch_command(["cockpit"], parsed, options) do
+    port = parsed[:port] || 0
+
+    if port in 0..65_535 do
+      case discover_project(options) do
+        {:ok, project} -> Hancho.Cockpit.serve(project, port, options)
+        {:error, reason} -> command_error(reason)
+      end
+    else
+      IO.puts(:stderr, "ERROR: cockpit port must be from 0 through 65535.")
+      2
     end
   end
 

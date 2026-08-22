@@ -109,6 +109,121 @@ Workflow structure does not use `config.toml`. Edit the repository-local YAML
 file to change action parameters. Hancho permits only action modules in
 `Hancho.Workflow.Registry`; it does not create atoms from YAML module names.
 
+### Roles
+
+A workflow is the complete factory pack. Its optional `roles` map gives stable
+agent settings to one or more steps. A role can set its prompt with an inline
+block or with a file relative to `.hancho/prompts/`. It can also select the
+Harness provider, CLI executable, model, reasoning effort, and provider-supported
+extra arguments:
+
+```yaml
+roles:
+  implementer:
+    provider: codex
+    cli: /opt/codex/bin/codex
+    model: gpt-5.6-codex
+    reasoning_effort: high
+    prompt_file: roles/implementer.md
+  reviewer:
+    provider: grok
+    prompt: |
+      Review the change against the accepted behavior and repository rules.
+
+steps:
+  - name: implement
+    role: implementer
+    action: Hancho.Actions.Implement
+    params:
+      prompt: "$steps.render_prompt.rendered"
+      worktree_path: "$steps.create_worktree.worktree_path"
+      timeout_ms: 1800000
+```
+
+Role values are defaults. An implementation step can override them. The role
+prompt is added before the task prompt. Hancho resolves a role prompt file when
+it loads the workflow and embeds the file content in the durable workflow
+snapshot. A retry therefore does not read a changed prompt file. The selected
+provider must support the requested model, reasoning effort, and extra
+arguments. `xhigh` currently uses the Grok adapter because the normalized
+Harness reasoning enum stops at `high`.
+
+When two adjacent steps have different roles, Hancho writes a durable handoff
+record before the first step completes. The record names the run, roles, steps,
+artifact, payload, and lifecycle times. Handoffs are Bedrock records. They are
+not files or terminal messages.
+
+### Typed artifacts
+
+Workflows can declare named JSON artifacts. A producing step validates its full
+result against the declared type before the workflow can continue. A consuming
+step can use `$artifacts.NAME.FIELD` references:
+
+```yaml
+artifacts:
+  specification:
+    type: object
+    required: [gherkin]
+    properties:
+      gherkin: string
+
+steps:
+  - name: specify
+    role: specifier
+    action: Example.Specify
+    produces: specification
+  - name: implement
+    role: implementer
+    action: Hancho.Actions.Implement
+    consumes: [specification]
+    params:
+      prompt: "$artifacts.specification.gherkin"
+```
+
+Supported types are `any`, `object`, `array`, `string`, `integer`, `number`,
+and `boolean`. Hancho rejects an undeclared artifact, a duplicate producer, or
+a consumer that occurs before its producer.
+
+### Human attention
+
+Use `Hancho.Actions.RequestAttention` for an approval or question:
+
+```yaml
+- name: approve_specification
+  role: specifier
+  action: Hancho.Actions.RequestAttention
+  params:
+    kind: approval
+    title: Approve the specification
+    body: Review the specification artifact before implementation starts.
+```
+
+The action creates a durable attention record and stops the run with its
+attention ID. Resolve it, and then retry the same run:
+
+```sh
+./hancho attention list
+./hancho attention approve RUN_ID:attention:approve_specification --response "Approved"
+./hancho attention answer ID --response "Use the existing adapter"
+./hancho retry RUN_ID
+```
+
+Attention kinds are `approval`, `clarification`, `scope_exception`, and
+`recovery`. Decisions and answers remain in Bedrock with the run and step IDs.
+
+### Cockpit
+
+Start the loopback-only cockpit on an automatically selected port:
+
+```sh
+./hancho cockpit
+```
+
+Use `--port N` to select a port. The cockpit shows runs, queues, role handoffs,
+and human attention. It refreshes every two seconds. An operator can approve,
+reject, or answer a pending attention record. Hancho binds the server only to
+`127.0.0.1`; it does not expose the cockpit on the network.
+
 Every implementation workflow must declare one workspace before its
 `Hancho.Actions.Implement` step. The default workflow uses
 `Hancho.Actions.CreateWorktree`. An in-place workflow must use
@@ -345,6 +460,15 @@ bytes and whether the in-memory result was truncated. The full verification
 log remains available at the protected output path.
 
 ## Retained worktrees
+
+Hancho keeps source isolation but shares safe Mix build inputs between serial
+worktrees. Agent and verification processes receive repository-local
+`MIX_DEPS_PATH` and `MIX_BUILD_PATH` values under `.hancho/cache/mix/`. The cache
+key contains `mix.exs`, `mix.lock`, the Elixir version, and the OTP release. A
+dependency, project, or runtime change selects a new cache. This removes most
+dependency download and compile work after the first run. Parallel workflow
+execution remains disabled, so two Hancho workers do not write the same build
+cache at the same time.
 
 List retained worktrees and their total storage use:
 
