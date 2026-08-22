@@ -326,6 +326,54 @@ its SHA-256 value. The activity log writes `workflow.snapshot` and
 prompt, and matching hashes. These local audit records are intentionally not
 redacted and can contain private task data.
 
+## GitHub demands and Beadwork execution
+
+GitHub owns promised scope and acceptance. Beadwork owns execution state and
+dependencies. Hancho uses an explicit one-to-one mapping:
+
+- One root GitHub Issue maps to one Beadwork epic.
+- One GitHub sub-issue maps to one Beadwork task under the mapped epic.
+- A Markdown task-list item is not a sub-issue and cannot map to a task.
+
+Each Beadwork record stores the canonical GitHub URL and node ID. Each GitHub
+Issue comment stores the Beadwork ID. The repository identity and GitHub node
+ID are stable mapping identity; an Issue number is display data only.
+
+Show the combined outstanding demand view without changing either system:
+
+```sh
+./hancho demands list --source all
+./hancho demands list --source github
+./hancho demands list --source beadwork
+./hancho demands audit
+```
+
+The audit reports missing, incomplete, duplicate, conflicting, nested, and
+orphaned records. An open Beadwork item with no matching open GitHub demand is
+shown as `unmapped`. A root GitHub Issue without sub-issues is visible but is
+not executable.
+
+Preview or apply missing mappings explicitly:
+
+```sh
+./hancho demands sync --dry-run
+./hancho demands sync --apply
+```
+
+Dry-run, list, and audit are read-only. Apply creates missing Beadwork epics and
+tasks and writes the two backlinks. It can repair a missing backlink, but it
+stops on duplicates, conflicting identities, wrong record types, wrong parent
+links, or nested sub-issues. It does not close records in either system.
+Apply holds the repository factory lease, records its intent and receipt in
+`.hancho/logs/demand-sync.jsonl`, and refreshes the non-authoritative cache at
+`.hancho/demand-mappings.json`. A failed or interrupted apply can be run again;
+the canonical markers make creation and backlink repair idempotent.
+
+The first version reads at most 100 open GitHub Issues and 100 comments on each
+Issue and supports one sub-issue level. It stops instead of returning an
+incomplete view when either limit is exceeded. The commands require authenticated
+`gh` and initialized `bw` clients for the current repository.
+
 ## Foreground queues
 
 Run an explicit number of ready Beadwork tasks through one workflow:
@@ -353,7 +401,9 @@ each named blocker is closed or is an earlier task in the same serial queue.
 Execution cards with a `Queue ordinal` in their description are selected in
 that order. A task with another unresolved blocker is not selected.
 
-Hancho first reads `bw ready --json` and keeps ready items with the `task` type.
+Hancho first reads `bw ready --json` and `bw list --all --json`. It keeps ready
+items with the `task` type only when the task has canonical GitHub URL and node
+markers and its parent is a mapped Beadwork epic.
 It uses the full-list fallback described above only when that command returns
 too few tasks. Hancho requires the requested number before it starts. It saves
 their order in Bedrock and runs one child workflow at a time. Each child has a

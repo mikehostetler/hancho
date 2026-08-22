@@ -14,8 +14,33 @@ defmodule Hancho.QueueTest do
        ]}
     end
 
+    def list_all(_options), do: {:ok, [epic() | Enum.map(1..3, &issue("task-#{&1}"))]}
+
     defp issue(id) do
-      %{"id" => id, "type" => "task", "status" => "open", "blocked_by" => []}
+      %{
+        "id" => id,
+        "type" => "task",
+        "status" => "open",
+        "parent" => "epic-1",
+        "blocked_by" => [],
+        "description" => mapping(id)
+      }
+    end
+
+    defp mapping(id),
+      do:
+        "Hancho-GitHub-Sub-Issue: https://github.test/issues/#{id}\nHancho-GitHub-Node: node-#{id}"
+
+    defp epic, do: mapped_epic()
+
+    defp mapped_epic do
+      %{
+        "id" => "epic-1",
+        "type" => "epic",
+        "status" => "open",
+        "description" =>
+          "Hancho-GitHub-Issue: https://github.test/issues/epic-1\nHancho-GitHub-Node: node-epic-1"
+      }
     end
   end
 
@@ -27,10 +52,21 @@ defmodule Hancho.QueueTest do
     def list_all(_options) do
       {:ok,
        [
+         mapped_epic(),
          issue("task-later", "open", ["task-next"], 20),
          issue("task-closed", "closed", [], 5),
          issue("task-next", "open", ["task-closed"], 10)
        ]}
+    end
+
+    defp mapped_epic do
+      %{
+        "id" => "epic-1",
+        "type" => "epic",
+        "status" => "open",
+        "description" =>
+          "Hancho-GitHub-Issue: https://github.test/issues/epic-1\nHancho-GitHub-Node: node-epic-1"
+      }
     end
 
     defp issue(id, status, blocked_by, ordinal) do
@@ -39,7 +75,9 @@ defmodule Hancho.QueueTest do
         "type" => "task",
         "status" => status,
         "blocked_by" => blocked_by,
-        "description" => "Queue ordinal: `#{ordinal}`"
+        "parent" => "epic-1",
+        "description" =>
+          "Queue ordinal: `#{ordinal}`\nHancho-GitHub-Sub-Issue: https://github.test/issues/#{id}\nHancho-GitHub-Node: node-#{id}"
       }
     end
   end
@@ -48,7 +86,17 @@ defmodule Hancho.QueueTest do
     def ready(_options), do: {:ok, [issue("task-2", 20)]}
 
     def list_all(_options) do
-      {:ok, [issue("task-2", 20), issue("task-1", 10)]}
+      {:ok, [mapped_epic(), issue("task-2", 20), issue("task-1", 10)]}
+    end
+
+    defp mapped_epic do
+      %{
+        "id" => "epic-1",
+        "type" => "epic",
+        "status" => "open",
+        "description" =>
+          "Hancho-GitHub-Issue: https://github.test/issues/epic-1\nHancho-GitHub-Node: node-epic-1"
+      }
     end
 
     defp issue(id, ordinal) do
@@ -58,7 +106,9 @@ defmodule Hancho.QueueTest do
         "type" => "task",
         "status" => "open",
         "blocked_by" => [],
-        "description" => "Queue ordinal: `#{ordinal}`"
+        "parent" => "epic-1",
+        "description" =>
+          "Queue ordinal: `#{ordinal}`\nHancho-GitHub-Sub-Issue: https://github.test/issues/#{id}\nHancho-GitHub-Node: node-#{id}"
       }
     end
   end
@@ -70,11 +120,20 @@ defmodule Hancho.QueueTest do
       {:ok,
        [
          %{
+           "id" => "epic-1",
+           "type" => "epic",
+           "status" => "open",
+           "description" =>
+             "Hancho-GitHub-Issue: https://github.test/issues/epic-1\nHancho-GitHub-Node: node-epic-1"
+         },
+         %{
            "id" => "task-blocked",
            "type" => "task",
            "status" => "open",
            "blocked_by" => ["task-missing"],
-           "description" => "Queue ordinal: `10`"
+           "parent" => "epic-1",
+           "description" =>
+             "Queue ordinal: `10`\nHancho-GitHub-Sub-Issue: https://github.test/issues/task-blocked\nHancho-GitHub-Node: node-task-blocked"
          }
        ]}
     end

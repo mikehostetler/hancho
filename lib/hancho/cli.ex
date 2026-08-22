@@ -29,6 +29,12 @@ defmodule Hancho.CLI do
                       Resolve one attention record
     hancho cockpit [--port N]
                       Start the local Hancho cockpit
+    hancho demands list [--source all|github|beadwork]
+                      Show outstanding GitHub and Beadwork demands
+    hancho demands audit
+                      Audit explicit GitHub and Beadwork mappings
+    hancho demands sync --dry-run|--apply
+                      Preview or apply missing demand mappings
     hancho queue WORKFLOW --source beadwork-ready --count N [--dry-run] [--verbose]
                       Run ready Beadwork tasks serially in the foreground
     hancho --version  Print the Hancho version
@@ -42,6 +48,7 @@ defmodule Hancho.CLI do
     count: :integer,
     verbose: :boolean,
     dry_run: :boolean,
+    apply: :boolean,
     response: :string,
     port: :integer
   ]
@@ -255,6 +262,53 @@ defmodule Hancho.CLI do
     end
   end
 
+  defp dispatch_command(["demands", "list"], parsed, options) do
+    allowed = Keyword.drop(parsed, [:source]) == []
+
+    if allowed do
+      source = parsed[:source] || "all"
+
+      with {:ok, project} <- discover_project(options),
+           {:ok, result} <- demands_api(options).list(project, source, demand_options(options)) do
+        print_demands(result)
+      else
+        {:error, reason} -> command_error(reason)
+      end
+    else
+      invalid_command_options(parsed)
+    end
+  end
+
+  defp dispatch_command(["demands", "audit"], [], options) do
+    with {:ok, project} <- discover_project(options),
+         {:ok, result} <- demands_api(options).audit(project, demand_options(options)) do
+      print_demand_audit(result)
+    else
+      {:error, reason} -> command_error(reason)
+    end
+  end
+
+  defp dispatch_command(["demands", "sync"], parsed, options) do
+    mode =
+      case {parsed[:dry_run] || false, parsed[:apply] || false, length(parsed)} do
+        {true, false, 1} -> :dry_run
+        {false, true, 1} -> :apply
+        _ -> nil
+      end
+
+    if mode do
+      with {:ok, project} <- discover_project(options),
+           {:ok, result} <- demands_api(options).sync(project, mode, demand_options(options)) do
+        print_demand_sync(result)
+      else
+        {:error, reason} -> command_error(reason)
+      end
+    else
+      IO.puts(:stderr, "ERROR: demands sync requires exactly one of --dry-run or --apply.")
+      2
+    end
+  end
+
   defp dispatch_command(["queue", workflow], parsed, options) do
     source = parsed[:source]
     count = parsed[:count]
@@ -459,6 +513,67 @@ defmodule Hancho.CLI do
   end
 
   defp worktrees_api(options), do: Keyword.get(options, :worktrees_api, Hancho.Worktrees)
+  defp demands_api(options), do: Keyword.get(options, :demands_api, Hancho.Demands)
+
+  defp demand_options(options) do
+    Keyword.take(options, [
+      :github,
+      :beadwork,
+      :github_options,
+      :beadwork_options,
+      :cache,
+      :lease_api
+    ])
+  end
+
+  defp invalid_command_options(parsed) do
+    names = parsed |> Keyword.keys() |> Enum.map_join(" ", &"--#{&1}")
+    IO.puts(:stderr, "ERROR: Options are not valid for this command: #{names}")
+    2
+  end
+
+  defp print_demands(result) do
+    IO.puts("Outstanding demands for #{result.repository} (#{result.source}):")
+
+    if result.records == [] do
+      IO.puts("No outstanding demands.")
+    else
+      Enum.each(result.records, fn record ->
+        github = if record.github_number, do: "##{record.github_number}", else: "no GitHub Issue"
+        beadwork = record.beadwork_id || "no Beadwork record"
+
+        IO.puts(
+          "#{record.mapping_status} #{record.kind} #{github} <-> #{beadwork} — #{record.title}"
+        )
+      end)
+    end
+
+    0
+  end
+
+  defp print_demand_audit(result) do
+    IO.puts("Demand mapping audit for #{result.repository}:")
+
+    if result.findings == [] do
+      IO.puts("No mapping findings.")
+      0
+    else
+      Enum.each(result.findings, fn finding ->
+        IO.puts(
+          "#{String.upcase(finding.severity)} #{finding.code} #{finding.identity}: #{finding.message}"
+        )
+      end)
+
+      if Enum.any?(result.findings, &(&1.severity == "error")), do: 1, else: 0
+    end
+  end
+
+  defp print_demand_sync(result) do
+    label = if result.mode == :dry_run, do: "Dry run", else: "Applied"
+    IO.puts("#{label}: #{length(result.actions)} demand mapping actions.")
+    Enum.each(result.actions, &IO.puts("- #{&1}"))
+    0
+  end
 
   defp command_error(reason) do
     IO.puts(:stderr, "ERROR: #{format_error(reason)}")

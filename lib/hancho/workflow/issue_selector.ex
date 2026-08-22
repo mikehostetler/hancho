@@ -2,37 +2,42 @@ defmodule Hancho.Workflow.IssueSelector do
   @moduledoc "Selects ordered ready tasks behind the Beadwork adapter boundary."
 
   alias Hancho.Beadwork.Issue
+  alias Hancho.Demand.Markers
 
   @spec select(module(), String.t(), pos_integer()) :: {:ok, [Issue.t()]} | {:error, term()}
   def select(beadwork, repository, count) do
     with {:ok, ready_values} <- beadwork.ready(working_dir: repository),
          {:ok, ready} <- parse_issues(ready_values),
-         {:ok, candidates} <- task_candidates(beadwork, repository, ready, count) do
+         {:ok, all_values} <- beadwork.list_all(working_dir: repository),
+         {:ok, all} <- parse_issues(all_values),
+         {:ok, candidates} <- task_candidates(ready, all, count) do
       select_count(candidates, count)
     end
   end
 
-  defp task_candidates(beadwork, repository, ready, count) do
-    tasks = Enum.filter(ready, &ready_task?/1)
+  defp task_candidates(ready, all, count) do
+    by_id = Map.new(all, &{&1.id, &1})
+
+    tasks =
+      ready
+      |> Enum.map(&Map.get(by_id, &1.id, &1))
+      |> Enum.filter(&ready_task?(&1, by_id))
 
     if length(tasks) >= count,
       do: {:ok, tasks},
-      else: ready_tasks_from_all(beadwork, repository)
+      else: ready_tasks_from_all(all, by_id)
   end
 
-  defp ready_tasks_from_all(beadwork, repository) do
-    with {:ok, values} <- beadwork.list_all(working_dir: repository),
-         {:ok, issues} <- parse_issues(values) do
-      statuses = Map.new(issues, &{&1.id, &1.status})
+  defp ready_tasks_from_all(issues, by_id) do
+    statuses = Map.new(issues, &{&1.id, &1.status})
 
-      ready =
-        issues
-        |> Enum.filter(&ready_task?/1)
-        |> Enum.sort_by(&queue_order/1)
-        |> select_serially_ready(statuses)
+    ready =
+      issues
+      |> Enum.filter(&ready_task?(&1, by_id))
+      |> Enum.sort_by(&queue_order/1)
+      |> select_serially_ready(statuses)
 
-      {:ok, ready}
-    end
+    {:ok, ready}
   end
 
   defp parse_issues(values) when is_list(values) do
@@ -51,7 +56,7 @@ defmodule Hancho.Workflow.IssueSelector do
   defp parse_issues(value), do: {:error, {:invalid_beadwork_issue_list, value}}
 
   defp select_count(ready, count) do
-    selected = ready |> Enum.filter(&ready_task?/1) |> Enum.take(count)
+    selected = Enum.take(ready, count)
 
     if length(selected) == count do
       {:ok, selected}
@@ -89,9 +94,11 @@ defmodule Hancho.Workflow.IssueSelector do
     {ordinal, issue.id}
   end
 
-  defp ready_task?(%Issue{type: "task", status: status})
-       when status in ["open", "in_progress"],
-       do: true
+  defp ready_task?(%Issue{type: "task", status: status} = issue, by_id)
+       when status in ["open", "in_progress"] do
+    Markers.mapped_task?(issue) and
+      issue.parent |> then(&Map.get(by_id, &1)) |> Markers.mapped_epic?()
+  end
 
-  defp ready_task?(_issue), do: false
+  defp ready_task?(_issue, _by_id), do: false
 end

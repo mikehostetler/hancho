@@ -8,8 +8,10 @@ defmodule Hancho.Beadwork.Issue do
               title: Zoi.string() |> Zoi.nullish() |> Zoi.default(nil),
               type: Zoi.string() |> Zoi.min(1),
               status: Zoi.string() |> Zoi.min(1),
+              parent: Zoi.string() |> Zoi.nullish() |> Zoi.default(nil),
               blocked_by: Zoi.array(Zoi.string()) |> Zoi.default([]),
-              description: Zoi.string() |> Zoi.default("")
+              description: Zoi.string() |> Zoi.default(""),
+              comments: Zoi.array(Zoi.any()) |> Zoi.default([])
             },
             coerce: true
           )

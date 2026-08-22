@@ -7,6 +7,9 @@ defmodule Hancho.SchemaTest do
   alias Hancho.Config.Logs
   alias Hancho.Config.Repo
   alias Hancho.Log.Event
+  alias Hancho.Demand.Finding
+  alias Hancho.Demand.Record
+  alias Hancho.GitHub.Issue, as: GitHubIssue
   alias Hancho.Project
   alias Hancho.Workflow.Definition
   alias Hancho.Workflow.ArtifactSpec
@@ -26,6 +29,9 @@ defmodule Hancho.SchemaTest do
     Logs,
     Repo,
     Event,
+    Finding,
+    Record,
+    GitHubIssue,
     Project,
     Definition,
     ArtifactSpec,

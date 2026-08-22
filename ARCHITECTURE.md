@@ -53,6 +53,9 @@ cluster and implements the durability barrier.
 | Role-to-role work | Workflow runtime | Bedrock handoff records |
 | Human decisions and answers | Attention action and cockpit | Bedrock attention records |
 | Git and worktree state | Git and filesystem | Reconciled with saved expectations |
+| Promised scope and acceptance | GitHub Issues | Read through the GitHub adapter |
+| Execution tasks and dependencies | Beadwork | Read and changed through the Beadwork adapter |
+| Cross-system identity | Bidirectional markers | Audited by `Hancho.Demands` |
 | Human-readable history | Audit and reporter modules | JSONL log and forensic reports |
 
 The factory lease and active-queue key have different purposes. The lease stops
@@ -87,6 +90,11 @@ shows whether a running item started its child workflow. This avoids a second
 - Factory-created commits do not use interactive GPG signing.
 - Recovery does not delete a worktree, reset Git, or clear an active queue
   without proof that the action is safe.
+- Demand list and audit operations do not change GitHub, Beadwork, Git, or
+  Hancho durable state.
+- A queue can select only a mapped Beadwork task under a mapped epic.
+- Demand synchronization creates or repairs links but never copies closure
+  state between GitHub and Beadwork.
 - Bedrock remains pinned to the tested Mike Hostetler fork until upstream has
   the required layout and recovery fixes.
 

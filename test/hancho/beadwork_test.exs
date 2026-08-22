@@ -30,6 +30,34 @@ defmodule Hancho.BeadworkTest do
       {:ok,
        %Result{stdout: ~s([{"id":"hancho-2","type":"task"}]) <> "\n", stderr: "", exit_status: 0}}
     end
+
+    def run(
+          "/test/bw",
+          [
+            "create",
+            "Child",
+            "--type",
+            "task",
+            "--description",
+            "mapped",
+            "--parent",
+            "bw-epic",
+            "--json"
+          ],
+          _options
+        ) do
+      {:ok,
+       %Result{
+         stdout:
+           ~s({"id":"bw-task","title":"Child","type":"task","status":"open","parent":"bw-epic","description":"mapped"}),
+         stderr: "",
+         exit_status: 0
+       }}
+    end
+
+    def run("/test/bw", ["comment", "bw-task", "backlink", "--json"], _options) do
+      {:ok, %Result{stdout: ~s({"id":"bw-task"}), stderr: "", exit_status: 0}}
+    end
   end
 
   defmodule ReadyCommand do
@@ -73,5 +101,19 @@ defmodule Hancho.BeadworkTest do
   test "lists all issues for queue readiness fallback" do
     assert Hancho.Beadwork.list_all(executable: "/test/bw", command: Command) ==
              {:ok, [%{"id" => "hancho-2", "type" => "task"}]}
+  end
+
+  test "creates parented tasks and comments through the fake executable" do
+    assert {:ok, %{"id" => "bw-task", "parent" => "bw-epic"}} =
+             Hancho.Beadwork.create("Child", "task", "mapped", "bw-epic",
+               executable: "/test/bw",
+               command: Command
+             )
+
+    assert {:ok, %{"id" => "bw-task"}} =
+             Hancho.Beadwork.comment("bw-task", "backlink",
+               executable: "/test/bw",
+               command: Command
+             )
   end
 end

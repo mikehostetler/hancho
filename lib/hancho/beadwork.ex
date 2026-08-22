@@ -45,6 +45,14 @@ defmodule Hancho.Beadwork do
   @spec start(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def start(issue_id, options \\ []), do: run_json(["start", issue_id, "--json"], options)
 
+  @spec create(String.t(), String.t(), String.t(), String.t() | nil, keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def create(title, type, description, parent \\ nil, options \\ []) do
+    arguments = ["create", title, "--type", type, "--description", description]
+    arguments = if parent, do: arguments ++ ["--parent", parent], else: arguments
+    run_json(arguments ++ ["--json"], options)
+  end
+
   @spec comment(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def comment(issue_id, text, options \\ []),
     do: run_json(["comment", issue_id, text, "--json"], options)
