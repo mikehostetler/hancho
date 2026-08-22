@@ -2,6 +2,7 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-08-22T15:43:52Z",
   "created": "2026-08-22T15:37:06Z",
   "description": "Managed execution record for GitHub demand.\n\nHancho-GitHub-Issue: https://github.com/mikehostetler/hancho/issues/2\nHancho-GitHub-Node: I_kwDOT6BfrM8AAAABN0fIIg",
   "id": "hancho-cbh",
@@ -13,7 +14,7 @@
     }
   ],
   "priority": 2,
-  "status": "open",
+  "status": "closed",
   "title": "Add GitHub demand visibility and Beadwork mapping",
   "type": "epic",
   "updated_at": "2026-08-22T15:43:52Z"
