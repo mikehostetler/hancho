@@ -6,9 +6,15 @@
   "description": "Managed execution record for GitHub demand.\n\nHancho-GitHub-Issue: https://github.com/mikehostetler/hancho/issues/2\nHancho-GitHub-Node: I_kwDOT6BfrM8AAAABN0fIIg",
   "id": "hancho-cbh",
   "labels": [],
+  "comments": [
+    {
+      "text": "Delivered in commit 07fa2b8. Added typed GitHub and Beadwork adapters, explicit root/sub-issue mappings, combined read-only views, mapping audit, safe dry-run/apply synchronization, queue eligibility checks, local intent/receipt history, tests, and documentation. Full verification passed: 180 tests, 2 subprocess tests, 78.32% coverage, production escript build, and smoke test.",
+      "timestamp": "2026-08-22T15:43:52Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Add GitHub demand visibility and Beadwork mapping",
   "type": "epic",
-  "updated_at": "2026-08-22T15:37:06Z"
+  "updated_at": "2026-08-22T15:43:52Z"
 }
